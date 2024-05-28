@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<settings>
+  <localRepository>@basedir@/target/it-repo</localRepository>
+
+  <profiles>
+    <profile>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <id>it-repo</id>
+
+      <pluginRepositories>
+        <pluginRepository>
+          <id>local.central</id>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+          <url>@baseurl@/target/it-repo</url>
+        </pluginRepository>
+      </pluginRepositories>
+
+      <repositories>
+        <repository>
+          <id>local.central</id>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+          </snapshots>
+          <url>@baseurl@/target/it-repo</url>
+        </repository>
+      </repositories>
+
+    </profile>
+  </profiles>
+
+</settings>

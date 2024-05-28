@@ -1,0 +1,4 @@
+services:
+  my-service:
+    image: docker.io/library/alpine:3.20.0
+    command: sleep 20s
