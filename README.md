@@ -2,13 +2,10 @@
 
 Use docker compose to control docker containers from maven. This has four goals:
 
-1. Assemble compose configuration and add as a secondary artifact for build.
-2. Link compose configuration(s) into canonical format
-   [docker config](https://docs.docker.com/reference/cli/docker/compose/config/).
-3. Create and start containers, networks, and volumes in a compose application
-   [docker up](https://docs.docker.com/reference/cli/docker/compose/up/).
-4. Stops containers and removes containers, networks, volumes, and images in a compose application
-   [docker down](https://docs.docker.com/reference/cli/docker/compose/down/).
+1. [Assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) compose configuration and add as a secondary artifact for build.
+2. [Link](https://chonton.github.io/compose-maven-plugin/link-mojo.html) compose configuration(s) into canonical format.
+3. Bring [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) containers, networks, and volumes in a compose application.
+4. Take [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) containers, networks, volumes, and images in a compose application.
 
 # Rationale
 
@@ -28,17 +25,25 @@ the **integration-test** phase. Capture logs and halt compose application during
 # Plugin
 
 Plugin reports are available
-at [plugin info](https://chonton.github.io/compose-maven-plugin/0.0.1/plugin-info.html).
+at [plugin info](https://chonton.github.io/compose-maven-plugin/plugin-info.html).
+
+### Global Configuration
+
+|   Parameter |        Default        | Description                                      |
+|------------:|:---------------------:|:-------------------------------------------------|
+|         cli |       `docker`        | Name of compose cli                              |
+| projectName | ${project.artifactId} | Name of compose application                      |
+|     timeout |          30           | Number of seconds to wait for compose completion |
 
 ## Assemble Goal
 
-The [assemble](https://chonton.github.io/helmrepo-maven-plugin/0.0.1/assemble.html) goal binds by
+The [assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) goal binds by
 default to the **compile** phase. This goal assembles a jar from the contents of directories in
 **src/compose**. Each directory is a namespace which allows downstream consumers to link an
 application without name clashes. The jar is attached as a secondary artifact which is installed
 during **install** phase and deployed during **deploy** phase.
 
-Example layout
+Example compose source layout
 
 ```text
 ├ src
@@ -52,20 +57,14 @@ Example layout
 
 ## Link Goal
 
-The [link](https://chonton.github.io/helmrepo-maven-plugin/0.0.1/link.html) goal binds by default to
+The [link](https://chonton.github.io/compose-maven-plugin/link-mojo.html) goal binds by default to
 the **test** phase. Any dependency compose artifacts will be downloaded and un-jarred into the
 **target/compose** directory. While un-jarring, the contents are interpolated using maven
 properties. Any `${}` expression that is not assigned is left un-interpolated, allowing compose
-runtime interpolation to expand the expression. (Service ports with a variable published port are
-tracked in **target/compose/ports.yaml**.) The contents of **src/compose** is similarly processed.
-Missing dependencies or file overwrites will cause a failure. All files named `compose.yaml` will be
-added to a `docker compose config` execution with the project-directory set to **target/compose**.
-The linked application file is saved as **target/compose/linked.yaml**.
-
-ports.yaml:
-- property:
-  service:
-  private:
+runtime interpolation to expand the expression. The contents of **src/compose** is similarly
+processed. Missing dependencies or file overwrites will cause a failure. All files
+named `compose.yaml` will be added to a `docker compose config` execution with the project-directory
+set to **target/compose**. The linked application file is saved as **target/compose/linked.yaml**.
 
 ### Configuration
 
@@ -75,32 +74,20 @@ ports.yaml:
 
 ## Up Goal
 
-The [up](https://chonton.github.io/helmrepo-maven-plugin/0.0.1/up.html) goal binds by default to the
+The [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) goal binds by default to the
 **pre-integration-test** phase. This goal executes `docker compose up` using
 **target/compose/linked.yaml**. If the `published` field of any
 [service port](https://docs.docker.com/compose/compose-file/05-services/#ports) is defined with a
 non-numeric name, a maven property of that name will be set with the assigned port.
 
-### Configuration
-
-|   Parameter |        Default        | Description                 |
-|------------:|:---------------------:|:----------------------------|
-| projectName | ${project.artifactId} | Name of compose application |
-
 ## Down Goal
 
-The [down](https://chonton.github.io/helmrepo-maven-plugin/0.0.1/down.html) goal binds by default to
+The [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) goal binds by default to
 the **post-integration-test** phase. This goal will execute `docker compose down`.
-
-### Configuration
-
-|   Parameter |        Default        | Description                 |
-|------------:|:---------------------:|:----------------------------|
-| projectName | ${project.artifactId} | Name of compose application |
 
 ### Container logs
 
-Before taking down an application, this goal captures the logs of each service container as
+Before taking down an application, the `down` goal captures the logs of each service container as
 ${serviceName}.log in the **target/compose/** directory.
 
 # Examples
@@ -114,8 +101,8 @@ ${serviceName}.log in the **target/compose/** directory.
     <plugins>
       <plugin>
         <groupId>org.honton.chas</groupId>
-        <artifactId>helmrepo-maven-plugin</artifactId>
-        <version>0.0.3</version>
+        <artifactId>compose-maven-plugin</artifactId>
+        <version>0.0.1</version>
       </plugin>
     </plugins>
   </pluginManagement>
@@ -123,77 +110,36 @@ ${serviceName}.log in the **target/compose/** directory.
   <plugins>
     <plugin>
       <groupId>org.honton.chas</groupId>
-      <artifactId>helmrepo-maven-plugin</artifactId>
+      <artifactId>compose-maven-plugin</artifactId>
       <executions>
         <execution>
           <goals>
-            <goal>package</goal>
-            <goal>upgrade</goal>
-            <goal>uninstall</goal>
+            <goal>assemble</goal>
+            <goal>link</goal>
+            <goal>up</goal>
+            <goal>down</goal>
           </goals>
         </execution>
       </executions>
-      <configuration>
-        <valueYaml><![CDATA[
-name: globalValue
-]]>
-        </valueYaml>
-        <releases combine.children="append">
-          <release>
-            <chart>org.honton.chas:test-reports:1.3.4</chart>
-            <valueYaml><![CDATA[
-name: releaseValue
-nested:
-  list:
-  - one
-  - two
-]]>
-            </valueYaml>
-            <nodePorts>
-              <nodePort>
-                <portName>http</portName>
-                <propertyName>report.port</propertyName>
-                <serviceName>test-reports</serviceName>
-              </nodePort>
-            </nodePorts>
-            <logs>
-              <pod>test</pod>
-              <pod>report</pod>
-            </logs>
-          </release>
-          <release>
-            <name>report-job</name>
-            <namespace>report</namespace>
-            <requires>test-reports</requires>
-            <chart>src/helm/${project.artifactId}</chart>
-          </release>
-        </releases>
-      </configuration>
     </plugin>
   </plugins>
 </build>
 ```
 
-## Use as a packaging extension
+## Example Compose File
 
-```xml
-
-<project>
-  <modelVersion>4.0.0</modelVersion>
-
-  <groupId>com.example.helm</groupId>
-  <artifactId>chart</artifactId>
-  <packaging>tgz</packaging>
-
-  <build>
-    <extensions>
-      <extension>
-        <groupId>org.honton.chas</groupId>
-        <artifactId>helmrepo-maven-plugin</artifactId>
-        <version>0.0.2</version>
-      </extension>
-    </extensions>
-  </build>
-
-</project>
+```yaml
+# This file is located at src/compose/my-app
+services:
+  may-app:
+    image: docker.io/library/alpine:${ALPINE_VERSION}
+    command: /bin/ash -c "echo 'upgrade' && sleep ${sleep.time}"
+    ports:
+    - "http.port:80" # maven property http.port will be set with `host` port mapped to port 80
+    - name: https
+      target: 443
+      published: https.port # maven property https.port will be set with `host` port mapped to port 443
+      protocol: tcp
+      app_protocol: http
+      mode: host
 ```
