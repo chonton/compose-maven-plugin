@@ -7,6 +7,8 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.jar.Attributes;
+import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -57,7 +59,7 @@ public class ComposeAssemble extends ComposeGoal {
             OutputStream fileStream =
                 Files.newOutputStream(
                     destPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            destination = new JarOutputStream(fileStream, new Manifest());
+            destination = new JarOutputStream(fileStream, createManifest());
           }
           JarEntry entry = new JarEntry(rootPath.relativize(file).toString());
           entry.setTime(file.toFile().lastModified());
@@ -68,6 +70,15 @@ public class ComposeAssemble extends ComposeGoal {
       }
     }
     return destination;
+  }
+
+  private static Manifest createManifest() {
+    Manifest manifest = new Manifest();
+    Attributes mainAttributes = manifest.getMainAttributes();
+    mainAttributes.put(Name.MANIFEST_VERSION, "1.0");
+    mainAttributes.put(new Name("Created-By"), "compose-maven-plugin");
+    mainAttributes.put(Name.CONTENT_TYPE, "Compose");
+    return manifest;
   }
 
   protected final void doExecute() throws IOException {

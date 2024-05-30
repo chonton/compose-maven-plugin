@@ -2,10 +2,23 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.regex.Pattern;
 
 String content = Files.readString(basedir.toPath().resolve("build.log"), StandardCharsets.UTF_8);
+Pattern pattern = Pattern.compile("^\\[INFO] http.port = ([1-9]\\d+)\nhttps.port = ([1-9]\\d+)", Pattern.MULTILINE);
+if (!pattern.matcher(content).find()) {
+  throw new IllegalStateException("ports not set");
+}
 
-if (!content.contains("\n[INFO] BUILD SUCCESS\n")) {
-  throw new IllegalStateException("[INFO] BUILD SUCCESS not found");
+Path composeDir = basedir.toPath().resolve("target/compose");
+if (composeDir.resolve("my-service.log").toFile().length() == 0) {
+  throw new IllegalStateException("empty my-service.log");
+}
+if (composeDir.resolve("your-service.log").toFile().length() == 0) {
+  throw new IllegalStateException("empty your-service.log");
+}
+if (composeDir.resolve("upgrade.log").toFile().length() == 0) {
+  throw new IllegalStateException("empty your-service.log");
 }

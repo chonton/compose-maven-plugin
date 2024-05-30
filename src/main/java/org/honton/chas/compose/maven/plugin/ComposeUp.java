@@ -1,9 +1,13 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -17,12 +21,20 @@ import org.yaml.snakeyaml.Yaml;
 @Mojo(name = "up", defaultPhase = LifecyclePhase.PRE_INTEGRATION_TEST, threadSafe = true)
 public class ComposeUp extends ComposeProjectGoal {
 
-  /** Number of seconds to wait for application containers to be ready */
-  @Parameter(property = "compose.timeout", defaultValue = "30")
-  public String timeout;
+  private static final String ALL_INTERFACES = "0.0.0.0:";
+  private static final int ALL_INTERFACES_LEN = ALL_INTERFACES.length();
+
+  /** Environment variables to apply */
+  @Parameter Map<String, String> env;
 
   @Parameter(defaultValue = "${project.properties}", required = true, readonly = true)
   Properties properties;
+
+  @Parameter(
+      defaultValue = "${project.build.directory}/compose/.env",
+      required = true,
+      readonly = true)
+  File envFile;
 
   @Override
   protected String subCommand() {
@@ -31,6 +43,10 @@ public class ComposeUp extends ComposeProjectGoal {
 
   @Override
   protected void addComposeOptions(CommandBuilder builder) {
+    if (env != null && !env.isEmpty()) {
+      createEnvFile();
+      builder.addGlobalOption("--env-file", envFile.getPath());
+    }
     builder
         .addGlobalOption("-f", linkedCompose.getPath())
         .addOption("--renew-anon-volumes")
@@ -38,7 +54,23 @@ public class ComposeUp extends ComposeProjectGoal {
         .addOption("--pull", "missing")
         .addOption("--quiet-pull")
         .addOption("--wait")
-        .addOption("--wait-timeout", timeout);
+        .addOption("--wait-timeout", Integer.toString(timeout));
+  }
+
+  @SneakyThrows
+  private void createEnvFile() {
+    try (Writer writer =
+        Files.newBufferedWriter(
+            envFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+      env.forEach(
+          (k, v) -> {
+            try {
+              writer.append(k).append('=').append(v).append(System.lineSeparator());
+            } catch (IOException e) {
+              throw new UncheckedIOException(e);
+            }
+          });
+    }
   }
 
   @Override
@@ -64,7 +96,11 @@ public class ComposeUp extends ComposeProjectGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port = new ExecHelper(this.getLog()).outputAsString(builder.getCommand());
+    String port =
+        new ExecHelper(this.getLog()).outputAsString(timeout, builder.getCommand()).strip();
+    if (port.startsWith(ALL_INTERFACES)) {
+      port = port.substring(ALL_INTERFACES_LEN);
+    }
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     properties.put(portInfo.getProperty(), port);
   }

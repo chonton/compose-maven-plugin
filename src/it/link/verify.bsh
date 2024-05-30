@@ -6,6 +6,6 @@ import java.nio.file.Paths;
 
 String content = Files.readString(basedir.toPath().resolve("build.log"), StandardCharsets.UTF_8);
 
-if (!content.contains("tutorial NodePort = ")) {
-  throw new IllegalStateException("tutorial NodePort = ");
+if (!content.contains("\n[INFO] BUILD SUCCESS\n")) {
+  throw new IllegalStateException("[INFO] BUILD SUCCESS not found");
 }

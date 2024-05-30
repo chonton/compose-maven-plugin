@@ -14,6 +14,10 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   @Parameter(property = "compose.cli", defaultValue = "docker")
   String cli;
 
+  /** Number of seconds to wait for compose commands */
+  @Parameter(property = "compose.timeout", defaultValue = "30")
+  public int timeout;
+
   @Parameter(
       defaultValue = "${project.build.directory}/compose/linked.yaml",
       required = true,
@@ -29,7 +33,7 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   protected void doExecute() throws MojoExecutionException {
     CommandBuilder builder = createBuilder(subCommand());
     addComposeOptions(builder);
-    executeComposeCommand(builder.getCommand());
+    executeComposeCommand(timeout, builder.getCommand());
     postComposeCommand();
   }
 
@@ -39,8 +43,9 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   protected abstract String subCommand();
 
-  private void executeComposeCommand(List<String> command) throws MojoExecutionException {
-    int exitCode = new ExecHelper(this.getLog()).waitForExit(command);
+  private void executeComposeCommand(int secondsToWait, List<String> command)
+      throws MojoExecutionException {
+    int exitCode = new ExecHelper(this.getLog()).waitForExit(secondsToWait, command);
     if (exitCode != 0) {
       throw new MojoExecutionException("compose exit value: " + exitCode);
     }

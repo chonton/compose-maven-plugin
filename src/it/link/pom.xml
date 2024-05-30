@@ -12,10 +12,6 @@
 
   <artifactId>link</artifactId>
 
-  <properties>
-    <sleep.time>5</sleep.time>
-  </properties>
-
   <build>
     <plugins>
 
@@ -33,24 +29,6 @@
               <dependencies>
                 <dependency>${project.groupId}:assemble:${project.version}</dependency>
               </dependencies>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <plugin>
-        <groupId>com.github.ekryd.echo-maven-plugin</groupId>
-        <artifactId>echo-maven-plugin</artifactId>
-        <version>2.1.0</version>
-        <executions>
-          <execution>
-            <id>print-tutorial-port</id>
-            <phase>integration-test</phase>
-            <goals>
-              <goal>echo</goal>
-            </goals>
-            <configuration>
-              <message>tutorial NodePort = ${tutorial.port}</message>
             </configuration>
           </execution>
         </executions>

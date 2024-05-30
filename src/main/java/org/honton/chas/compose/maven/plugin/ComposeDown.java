@@ -1,25 +1,21 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.File;
+import java.io.Writer;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.nio.file.StandardOpenOption;
+import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.yaml.snakeyaml.Yaml;
 
 /** Turn off compose application */
 @Mojo(name = "down", defaultPhase = LifecyclePhase.POST_INTEGRATION_TEST, threadSafe = true)
 public class ComposeDown extends ComposeProjectGoal {
 
-  /** Number of seconds to wait for application containers to exit */
-  @Parameter(property = "compose.timeout", defaultValue = "30")
-  String timeout;
-
   @Parameter(defaultValue = "${project.build.directory}/compose/", required = true, readonly = true)
   File composeProjectDir;
-
-  private List<String> services;
 
   @Override
   protected String subCommand() {
@@ -29,7 +25,7 @@ public class ComposeDown extends ComposeProjectGoal {
   @Override
   protected void addComposeOptions(CommandBuilder builder) {
     queryServiceList();
-    builder.addOption("--remove-orphans").addOption("--timeout", timeout);
+    builder.addOption("--remove-orphans").addOption("--timeout", Integer.toString(timeout));
   }
 
   private void queryServiceList() {
@@ -37,19 +33,24 @@ public class ComposeDown extends ComposeProjectGoal {
         createBuilder("ps")
             .addGlobalOption("-f", linkedCompose.getPath())
             .addOption("-a")
-            .addOption("--format", "{{json .Service}}");
+            .addOption("--format", "{{.Service}}");
 
-    String servicesJson = new ExecHelper(getLog()).outputAsString(builder.getCommand());
-    services = new Yaml().load(servicesJson);
+    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder.getCommand()).split("\\s+"));
   }
 
-  @Override
-  protected void postComposeCommand() {
-    services.forEach(
-        serviceName -> {
-          CommandBuilder builder = createBuilder("logs").addOption(serviceName);
-          Path output = composeProjectDir.toPath().resolve(serviceName + ".log");
-          new ExecHelper(getLog()).outputToFile(output, builder.getCommand());
-        });
+  @SneakyThrows
+  private void saveLogs(String[] services) {
+    for (String service : services) {
+      CommandBuilder builder =
+          createBuilder("logs").addOption("--no-log-prefix").addOption(service);
+      Path output = composeProjectDir.toPath().resolve(service + ".log");
+
+      try (Writer writer =
+          Files.newBufferedWriter(
+              output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+        new ExecHelper(getLog())
+            .outputToConsumer(timeout, new AnsiFilter(writer), builder.getCommand());
+      }
+    }
   }
 }

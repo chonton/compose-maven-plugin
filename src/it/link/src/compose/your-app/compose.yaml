@@ -1,14 +1,4 @@
 services:
   your-service:
-    image: docker.io/library/alpine:${ALPINE_VERSION}
-    command: sleep ${sleep.time}
-    env_file:
-    - your-app/.env
-    ports:
-      - "http.port:80"
-      - name: https
-        target: 443
-        published: https.port
-        protocol: tcp
-        app_protocol: http
-        mode: host
+    image: docker.io/library/alpine:3.20.0
+    command: /bin/ash -c "echo 'your-app' && sleep ${sleep.time}"

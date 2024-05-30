@@ -147,6 +147,8 @@ public class ComposeLink extends ComposeProjectGoal {
           copyYaml(source, dstPath);
           if (name.endsWith("/compose.yaml")) {
             builder.addGlobalOption("-f", dstPath.toString());
+          } else if (name.endsWith("/.env")) {
+            builder.addGlobalOption("--env-file", dstPath.toString());
           }
         }
       }
@@ -155,17 +157,18 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private void copyYaml(InputStream source, Path dstPath) throws IOException {
     Reader reader = interpolateReader(source);
-    BufferedWriter writer =
+    try (BufferedWriter writer =
         Files.newBufferedWriter(
-            dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
-    String name = dstPath.getFileName().toString();
-    if (name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json")) {
-      Map<String, Object> model = yaml.load(reader);
-      replaceVariablePorts(model);
-      yaml.dump(model, writer);
-    } else {
-      reader.transferTo(writer);
+      String name = dstPath.getFileName().toString();
+      if (name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json")) {
+        Map<String, Object> model = yaml.load(reader);
+        replaceVariablePorts(model);
+        yaml.dump(model, writer);
+      } else {
+        reader.transferTo(writer);
+      }
     }
   }
 
