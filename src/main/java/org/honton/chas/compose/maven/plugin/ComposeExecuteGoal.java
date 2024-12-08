@@ -1,7 +1,5 @@
 package org.honton.chas.compose.maven.plugin;
 
-import java.io.File;
-import java.util.List;
 import lombok.Getter;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -18,22 +16,10 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   @Parameter(property = "compose.timeout", defaultValue = "30")
   public int timeout;
 
-  @Parameter(
-      defaultValue = "${project.build.directory}/compose/linked.yaml",
-      required = true,
-      readonly = true)
-  File linkedCompose;
-
-  @Parameter(
-      defaultValue = "${project.build.directory}/compose/ports.yaml",
-      required = true,
-      readonly = true)
-  File portsFile;
-
   protected void doExecute() throws MojoExecutionException {
     CommandBuilder builder = createBuilder(subCommand());
     addComposeOptions(builder);
-    executeComposeCommand(timeout, builder.getCommand());
+    executeComposeCommand(timeout, builder);
     postComposeCommand();
   }
 
@@ -43,9 +29,9 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   protected abstract String subCommand();
 
-  private void executeComposeCommand(int secondsToWait, List<String> command)
+  private void executeComposeCommand(int secondsToWait, CommandBuilder builder)
       throws MojoExecutionException {
-    int exitCode = new ExecHelper(this.getLog()).waitForExit(secondsToWait, command);
+    int exitCode = new ExecHelper(this.getLog()).waitForExit(secondsToWait, builder);
     if (exitCode != 0) {
       throw new MojoExecutionException("compose exit value: " + exitCode);
     }

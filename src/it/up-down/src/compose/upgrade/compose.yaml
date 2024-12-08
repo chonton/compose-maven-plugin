@@ -3,10 +3,14 @@ services:
     image: docker.io/library/alpine:${ALPINE_VERSION}
     command: /bin/ash -c "echo 'upgrade' && sleep ${sleep.time}"
     ports:
-      - "http.port:80"
-      - name: https
-        target: 443
-        published: https.port
-        protocol: tcp
-        app_protocol: http
-        mode: host
+    - "http.port:80"
+    - name: https
+      target: 443
+      published: https.port
+      protocol: tcp
+      app_protocol: http
+      mode: host
+    volumes:
+    - type: bind
+      target: /tmp
+      source: ./target/tmp1

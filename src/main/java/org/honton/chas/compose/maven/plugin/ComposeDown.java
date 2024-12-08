@@ -1,10 +1,13 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.function.Consumer;
 import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -35,7 +38,7 @@ public class ComposeDown extends ComposeProjectGoal {
             .addOption("-a")
             .addOption("--format", "{{.Service}}");
 
-    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder.getCommand()).split("\\s+"));
+    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder).split("\\s+"));
   }
 
   @SneakyThrows
@@ -48,8 +51,16 @@ public class ComposeDown extends ComposeProjectGoal {
       try (Writer writer =
           Files.newBufferedWriter(
               output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-        new ExecHelper(getLog())
-            .outputToConsumer(timeout, new AnsiFilter(writer), builder.getCommand());
+
+        Consumer<CharSequence> consumer =
+            l -> {
+              try {
+                writer.append(l).append('\n');
+              } catch (IOException e) {
+                throw new UncheckedIOException(e);
+              }
+            };
+        new ExecHelper(getLog()).outputToConsumer(timeout, consumer, builder);
       }
     }
   }

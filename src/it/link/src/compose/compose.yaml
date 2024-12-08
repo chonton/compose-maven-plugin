@@ -2,3 +2,5 @@ services:
   your-service:
     image: docker.io/library/alpine:3.20.0
     command: /bin/ash -c "echo 'your-app' && sleep ${sleep.time}"
+    volumes:
+    - ${project.build.directory}/shortTmp:/tmp

@@ -27,7 +27,7 @@
             </goals>
             <configuration>
               <dependencies>
-                <dependency>${project.groupId}:assemble:${project.version}</dependency>
+                <dependency>${project.groupId}:assemble::my-app:${project.version}</dependency>
               </dependencies>
             </configuration>
           </execution>

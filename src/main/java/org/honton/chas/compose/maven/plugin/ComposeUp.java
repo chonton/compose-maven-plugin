@@ -42,7 +42,9 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   @Override
+  @SneakyThrows
   protected void addComposeOptions(CommandBuilder builder) {
+    createHostSourceDirs();
     if (env != null && !env.isEmpty()) {
       createEnvFile();
       builder.addGlobalOption("--env-file", envFile.getPath());
@@ -73,6 +75,33 @@ public class ComposeUp extends ComposeProjectGoal {
     }
   }
 
+  private void createHostSourceDirs() throws IOException {
+    Path mountsPath = mountsFile.toPath();
+    if (Files.isReadable(mountsPath)) {
+      readMounts(mountsPath).forEach(this::createSourceDirectory);
+    }
+  }
+
+  private void createSourceDirectory(String location) {
+    Path path = Path.of(location);
+    if (!path.isAbsolute()) {
+      path = linkedCompose.toPath().getParent().resolve(location).normalize();
+    }
+    if (Files.notExists(path)) {
+      try {
+        Files.createDirectories(path);
+      } catch (IOException e) {
+        getLog().warn("Unable to create directory " + path, e);
+      }
+    }
+  }
+
+  private List<String> readMounts(Path mountsPath) throws IOException {
+    try (BufferedReader reader = Files.newBufferedReader(mountsPath)) {
+      return new Yaml().load(reader);
+    }
+  }
+
   @Override
   @SneakyThrows
   protected void postComposeCommand() {
@@ -96,8 +125,7 @@ public class ComposeUp extends ComposeProjectGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port =
-        new ExecHelper(this.getLog()).outputAsString(timeout, builder.getCommand()).strip();
+    String port = new ExecHelper(this.getLog()).outputAsString(timeout, builder).strip();
     if (port.startsWith(ALL_INTERFACES)) {
       port = port.substring(ALL_INTERFACES_LEN);
     }

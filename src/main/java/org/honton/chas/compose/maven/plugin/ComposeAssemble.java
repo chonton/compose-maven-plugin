@@ -2,7 +2,6 @@ package org.honton.chas.compose.maven.plugin;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +11,8 @@ import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
+import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
@@ -27,50 +28,19 @@ public class ComposeAssemble extends ComposeGoal {
   @Parameter(defaultValue = "true")
   boolean attach;
 
-  /**
-   * Directory which holds compose application configuration(s). Compose files should be in
-   * subdirectories to namespace the configuration.
-   */
-  @Parameter(defaultValue = "src/compose")
-  File composeSrc;
-
-  @Parameter(
-      defaultValue =
-          "${project.build.directory}/compose/${project.artifactId}-${project.version}.jar",
-      required = true,
-      readonly = true)
-  File destFile;
-
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
   MavenProject project;
 
   @Component MavenProjectHelper projectHelper;
 
-  private JarOutputStream copyFiles(JarOutputStream destination, Path rootPath, Path current)
-      throws IOException {
-    try (DirectoryStream<Path> files = Files.newDirectoryStream(current, Files::isReadable)) {
-      for (Path file : files) {
-        if (Files.isDirectory(file)) {
-          destination = copyFiles(destination, rootPath, file);
-        } else if (Files.isReadable(file)) {
-          if (destination == null) {
-            Path destPath = destFile.toPath();
-            Files.createDirectories(destPath.getParent());
-            OutputStream fileStream =
-                Files.newOutputStream(
-                    destPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            destination = new JarOutputStream(fileStream, createManifest());
-          }
-          JarEntry entry = new JarEntry(rootPath.relativize(file).toString());
-          entry.setTime(file.toFile().lastModified());
-          destination.putNextEntry(entry);
-          Files.copy(file, destination);
-          destination.closeEntry();
-        }
-      }
-    }
-    return destination;
-  }
+  /**
+   * Directory which holds compose application configuration(s). Compose files should be in
+   * subdirectories to namespace the configuration.
+   */
+  @Parameter(property = "compose.src", defaultValue = "src/compose")
+  File composeSrc;
+
+  Path composeSrcPath;
 
   private static Manifest createManifest() {
     Manifest manifest = new Manifest();
@@ -81,18 +51,59 @@ public class ComposeAssemble extends ComposeGoal {
     return manifest;
   }
 
-  protected final void doExecute() throws IOException {
-    if (composeSrc.isDirectory()) {
-      Path rootPath = composeSrc.toPath();
-      JarOutputStream destination = copyFiles(null, rootPath, rootPath);
-      if (destination != null) {
-        destination.close();
-        if (attach) {
-          projectHelper.attachArtifact(project, "jar", "compose", destFile);
+  private void jarFiles(JarOutputStream jarStream, Path jarPath, Path current) throws IOException {
+    try (DirectoryStream<Path> files = Files.newDirectoryStream(current, Files::isReadable)) {
+      for (Path path : files) {
+        if (Files.isRegularFile(path)) {
+          JarEntry entry = new JarEntry(jarPath.resolve(path.getFileName()).toString());
+          entry.setTime(path.toFile().lastModified());
+          jarStream.putNextEntry(entry);
+          Files.copy(path, jarStream);
+          jarStream.closeEntry();
         }
-        return;
       }
     }
-    getLog().info("No compose files found in " + composeSrc + ", skipping 'assemble'");
+  }
+
+  protected final void doExecute() throws IOException {
+    composeSrcPath = composeSrc.toPath();
+    composeBuildPath = Files.createDirectories(composeBuildDirectory.toPath());
+    int count = jarAndAttach("compose", Path.of(project.getArtifactId()), composeSrcPath);
+
+    if (composeSrc.isDirectory()) {
+      composeSrcPath = composeSrc.toPath();
+      try (Stream<Path> services = Files.list(composeSrcPath)) {
+        count +=
+            services
+                .mapToInt(
+                    p -> {
+                      Path servicePath = p.getFileName();
+                      return jarAndAttach(servicePath.toString(), servicePath, p);
+                    })
+                .sum();
+      }
+    }
+    if (count == 0) {
+      getLog().info("No compose files found");
+    }
+  }
+
+  @SneakyThrows
+  private int jarAndAttach(String classifier, Path servicePath, Path path) {
+    if (!Files.isReadable(path.resolve("compose.yaml"))) {
+      return 0;
+    }
+    Path destPath = composeBuildPath.resolve(servicePath + ".jar");
+    try (JarOutputStream destination =
+        new JarOutputStream(
+            Files.newOutputStream(
+                destPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING),
+            createManifest())) {
+      jarFiles(destination, servicePath, path);
+    }
+    if (attach) {
+      projectHelper.attachArtifact(project, "jar", classifier, destPath.toFile());
+    }
+    return 1;
   }
 }

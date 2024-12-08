@@ -3,7 +3,6 @@ package org.honton.chas.compose.maven.plugin;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.LineNumberReader;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -70,15 +69,27 @@ public class ExecHelper {
   }
 
   public void createProcess(
-      List<String> command,
+      CommandBuilder builder,
       String stdin,
       Consumer<CharSequence> stdout,
       Consumer<CharSequence> stderr) {
-
     try {
-      infoLine.accept(String.join(" ", command));
-
-      Process process = new ProcessBuilder(command).start();
+      if (stdout != null) {
+        builder.addGlobalOption("--ansi", "never");
+      }
+      List<String> command = builder.getCommand();
+      ProcessBuilder processBuilder = new ProcessBuilder(command);
+      String cmdLine = String.join(" ", command);
+      if (stdout == null) {
+        processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
+        infoLine.accept(cmdLine);
+      } else {
+        debugLine.accept(cmdLine);
+      }
+      if (stderr == null) {
+        processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
+      }
+      Process process = processBuilder.start();
       startPump(process.getInputStream(), stdout);
       startPump(process.getErrorStream(), stderr);
 
@@ -94,18 +105,28 @@ public class ExecHelper {
   }
 
   private void startPump(InputStream process, Consumer<CharSequence> std) {
-    completionService.submit(() -> pumpLog(process, std));
+    if (process != null) {
+      completionService.submit(() -> pumpLog(process, std));
+    }
   }
 
   private Void pumpLog(InputStream is, Consumer<CharSequence> lineConsumer) throws IOException {
-    try (LineNumberReader reader =
-        new LineNumberReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+    try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
+      StringBuilder sb = new StringBuilder();
       for (; ; ) {
-        String line = reader.readLine();
-        if (line == null) {
+        int i = reader.read();
+        if (i < 0) {
+          if (!sb.isEmpty()) {
+            lineConsumer.accept(sb);
+          }
           return null;
         }
-        lineConsumer.accept(line);
+        if (i == '\n') {
+          lineConsumer.accept(sb);
+          sb.setLength(0);
+        } else {
+          sb.append((char) i);
+        }
       }
     }
   }
@@ -137,24 +158,21 @@ public class ExecHelper {
     }
   }
 
-  public String outputAsString(int secondsToWait, List<String> command) {
+  public String outputAsString(int secondsToWait, CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    Consumer<CharSequence> info = (l) -> sb.append(l).append('\n');
-
-    createProcess(command, null, info, errorLine);
-    waitNoError(secondsToWait);
-
+    Consumer<CharSequence> consumer = l -> sb.append(l).append('\n');
+    outputToConsumer(secondsToWait, consumer, builder);
     return sb.toString();
   }
 
   public void outputToConsumer(
-      int secondsToWait, Consumer<CharSequence> consumer, List<String> command) {
-    createProcess(command, null, consumer, errorLine);
+      int secondsToWait, Consumer<CharSequence> consumer, CommandBuilder builder) {
+    createProcess(builder, null, consumer, errorLine);
     waitNoError(secondsToWait);
   }
 
-  public int waitForExit(int secondsToWait, List<String> command) {
-    createProcess(command, null, infoLine, errorLine);
+  public int waitForExit(int secondsToWait, CommandBuilder builder) {
+    createProcess(builder, null, null, null);
     return waitForResult(secondsToWait);
   }
 }

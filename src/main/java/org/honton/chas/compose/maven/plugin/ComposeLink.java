@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.SneakyThrows;
 import org.apache.maven.execution.MavenSession;
@@ -48,6 +49,7 @@ public class ComposeLink extends ComposeProjectGoal {
   private final Yaml yaml;
   private final Map<String, String> extractedPaths = new HashMap<>();
   private final Set<Path> createdDirs = new HashSet<>();
+  private final Set<String> hostMounts = new HashSet<>();
 
   /** Dependencies in groupId:artifactId:version form */
   @Parameter List<String> dependencies;
@@ -58,19 +60,6 @@ public class ComposeLink extends ComposeProjectGoal {
   /** Interpolate compose configuration with values from maven build properties */
   @Parameter(defaultValue = "true")
   boolean filter;
-
-  @Parameter(
-      defaultValue = "${project.groupId}:${project.artifactId}:${project.version}",
-      required = true,
-      readonly = true)
-  String groupArtifactVersion;
-
-  @Parameter(
-      defaultValue =
-          "${project.build.directory}/compose/${project.artifactId}-${project.version}.jar",
-      required = true,
-      readonly = true)
-  File localJar;
 
   @Parameter(defaultValue = "${project.build.directory}/compose/", required = true, readonly = true)
   File composeProjectDir;
@@ -83,6 +72,9 @@ public class ComposeLink extends ComposeProjectGoal {
   @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true)
   List<RemoteRepository> remoteRepos;
 
+  @Parameter(defaultValue = "${project}", required = true, readonly = true)
+  MavenProject project;
+
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
     interpolator = InterpolatorFactory.createInterpolator(session, project);
@@ -93,6 +85,15 @@ public class ComposeLink extends ComposeProjectGoal {
     yaml = new Yaml(options);
   }
 
+  private static BufferedWriter bufferedWriter(Path dstPath) throws IOException {
+    return Files.newBufferedWriter(
+        dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+  }
+
+  private static String removeJarSuffix(String serviceName) {
+    return serviceName.substring(0, serviceName.lastIndexOf('.'));
+  }
+
   @Override
   public String subCommand() {
     return "config";
@@ -101,28 +102,42 @@ public class ComposeLink extends ComposeProjectGoal {
   /**
    * Fetch the artifact and return the local location
    *
-   * @param composeDependency The artifact to fetch
+   * @param artifact The artifact to fetch
    * @return The local file location
    */
   @SneakyThrows
-  private File getArtifact(String composeDependency) {
-    DefaultArtifact gav = new DefaultArtifact(composeDependency);
-    DefaultArtifact artifact =
-        new DefaultArtifact(
-            gav.getGroupId(), gav.getArtifactId(), "compose", "jar", gav.getVersion());
+  private File fetchArtifact(Artifact artifact) {
     Artifact local =
         repoSystem
             .resolveArtifact(repoSession, new ArtifactRequest(artifact, remoteRepos, null))
             .getArtifact();
     if (local == null) {
-      throw new MojoExecutionException(composeDependency + " is not available");
+      throw new MojoExecutionException(artifact + " is not available");
     }
+    getLog().info(artifact + " cache location " + local.getFile());
     return local.getFile();
   }
 
   @SneakyThrows
-  private void addArtifact(CommandBuilder builder, String gav, File artifact) {
-    try (JarFile jar = new JarFile(artifact)) {
+  private void addDependency(CommandBuilder builder, String dependency) {
+    DefaultArtifact artifact = new DefaultArtifact(dependency);
+    if ("".equals(artifact.getClassifier())) {
+      artifact =
+          new DefaultArtifact(
+              artifact.getGroupId(),
+              artifact.getArtifactId(),
+              "compose",
+              "jar",
+              artifact.getVersion());
+    }
+    String gav = artifact.toString();
+    getLog().info("Adding dependency " + gav);
+    addArtifact(builder, gav, fetchArtifact(artifact));
+  }
+
+  @SneakyThrows
+  private void addArtifact(CommandBuilder builder, String gav, File localFile) {
+    try (JarFile jar = new JarFile(localFile)) {
       Enumeration<JarEntry> entries = jar.entries();
       while (entries.hasMoreElements()) {
         JarEntry jarEntry = entries.nextElement();
@@ -157,9 +172,7 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private void copyYaml(InputStream source, Path dstPath) throws IOException {
     Reader reader = interpolateReader(source);
-    try (BufferedWriter writer =
-        Files.newBufferedWriter(
-            dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+    try (BufferedWriter writer = bufferedWriter(dstPath)) {
 
       String name = dstPath.getFileName().toString();
       if (name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json")) {
@@ -176,6 +189,7 @@ public class ComposeLink extends ComposeProjectGoal {
     Map<String, Map<String, Object>> services = (Map) model.get("services");
     if (services != null) {
       services.forEach(this::replaceVariablePorts);
+      services.forEach(this::collectHostMounts);
     }
   }
 
@@ -190,36 +204,77 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private Object getReplacement(String serviceName, Object port) {
     if (port instanceof String shortForm) {
-      String[] parts = shortForm.split(":");
-      if (parts.length > 1) {
-        String host = parts[parts.length - 2];
-        if (!host.isEmpty() && !Character.isDigit(host.charAt(0))) {
-          String replacement = parts[parts.length - 1];
-          int slashIdx = replacement.indexOf('/');
-          String container = slashIdx < 0 ? replacement : replacement.substring(0, slashIdx);
-          if (container.indexOf('-') >= 0) {
-            throw new IllegalArgumentException("range not supported for variable port");
-          }
-          addVariablePort(serviceName, host, container);
-          return replacement;
-        }
-      }
-      return shortForm;
+      return shortFormReplacement(serviceName, shortForm);
     }
-    if (port instanceof Map longForm) {
-      String published = (String) longForm.get("published");
-      if (published != null && !published.isEmpty() && !Character.isDigit(published.charAt(0))) {
-        String container = longForm.get("target").toString();
-        addVariablePort(serviceName, published, container);
-        longForm.remove("published");
-      }
-      return longForm;
+    if (port instanceof Map<?, ?> longForm) {
+      return longFormReplacement(serviceName, longForm);
     }
     return port;
   }
 
+  private String shortFormReplacement(String serviceName, String shortForm) {
+    String[] parts = shortForm.split(":");
+    if (parts.length > 1) {
+      String host = parts[parts.length - 2];
+      if (!host.isEmpty() && !Character.isDigit(host.charAt(0))) {
+        String replacement = parts[parts.length - 1];
+        int slashIdx = replacement.indexOf('/');
+        String container = slashIdx < 0 ? replacement : replacement.substring(0, slashIdx);
+        if (container.indexOf('-') >= 0) {
+          throw new IllegalArgumentException("range not supported for variable port");
+        }
+        addVariablePort(serviceName, host, container);
+        return replacement;
+      }
+    }
+    return shortForm;
+  }
+
+  private Map<?, ?> longFormReplacement(String serviceName, Map<?, ?> longForm) {
+    if (longForm.get("published") instanceof String published
+        && !published.isEmpty()
+        && !Character.isDigit(published.charAt(0))) {
+      Object container = longForm.get("target");
+      if (container != null) {
+        addVariablePort(serviceName, published, container.toString());
+        longForm.remove("published");
+      }
+    }
+    return longForm;
+  }
+
   private void addVariablePort(String serviceName, String property, String container) {
     variablePorts.add(Map.of("service", serviceName, "property", property, "container", container));
+  }
+
+  private void collectHostMounts(String serviceName, Map<String, Object> model) {
+    List<Object> volumes = (List) model.get("volumes");
+    if (volumes != null) {
+      volumes.forEach(this::collectHostMount);
+    }
+  }
+
+  private void collectHostMount(Object volume) {
+    if (volume instanceof Map<?, ?> longSyntax) {
+      if ("bind".equals(longSyntax.get("type"))
+          && longSyntax.get("source") instanceof String source) {
+        collectVolume(source);
+      }
+    } else if (volume instanceof String shortSyntax) {
+      int colonIdx = shortSyntax.indexOf(':');
+      if (colonIdx >= 0) {
+        collectVolume(shortSyntax.substring(0, colonIdx));
+      }
+    }
+  }
+
+  private void collectVolume(String volume) {
+    if (!volume.isEmpty()) {
+      char isPath = volume.charAt(0);
+      if (isPath == '/' || isPath == '.') {
+        hostMounts.add(volume);
+      }
+    }
   }
 
   private Reader interpolateReader(InputStream inputStream) {
@@ -231,10 +286,12 @@ public class ComposeLink extends ComposeProjectGoal {
   @Override
   protected void addComposeOptions(CommandBuilder builder) {
     if (dependencies != null) {
-      dependencies.forEach(dependency -> addArtifact(builder, dependency, getArtifact(dependency)));
+      dependencies.forEach(dependency -> addDependency(builder, dependency));
     }
-    if (Files.isReadable(localJar.toPath())) {
-      addArtifact(builder, groupArtifactVersion, localJar);
+
+    composeBuildPath = composeBuildDirectory.toPath();
+    if (Files.isDirectory(composeBuildPath)) {
+      addLocalServiceJars(builder);
     }
 
     builder
@@ -243,16 +300,49 @@ public class ComposeLink extends ComposeProjectGoal {
         .addOption("-o", linkedCompose.getPath());
   }
 
+  @SneakyThrows
+  private void addLocalServiceJars(CommandBuilder builder) {
+    try (Stream<Path> services = Files.list(composeBuildPath)) {
+      services.forEach(
+          localJar -> {
+            if (Files.isRegularFile(localJar)) {
+              String serviceName = localJar.getFileName().toString();
+              if (serviceName.endsWith(".jar")) {
+                String gav =
+                    project.getGroupId()
+                        + ':'
+                        + project.getArtifactId()
+                        + "::"
+                        + removeJarSuffix(serviceName)
+                        + ':'
+                        + project.getVersion();
+                getLog().info("Adding artifact " + gav);
+                addArtifact(builder, gav, localJar.toFile());
+              }
+            }
+          });
+    }
+  }
+
   @Override
   @SneakyThrows
   protected void postComposeCommand() {
-    if (variablePorts.isEmpty()) {
-      Files.deleteIfExists(portsFile.toPath());
+    Path hostMountsPath = mountsFile.toPath();
+    if (hostMounts.isEmpty()) {
+      Files.deleteIfExists(hostMountsPath);
     } else {
-      yaml.dump(
-          variablePorts,
-          Files.newBufferedWriter(
-              portsFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING));
+      try (BufferedWriter bw = bufferedWriter(hostMountsPath)) {
+        yaml.dump(hostMounts.toArray(), bw);
+      }
+    }
+
+    Path portsPath = portsFile.toPath();
+    if (variablePorts.isEmpty()) {
+      Files.deleteIfExists(portsPath);
+    } else {
+      try (BufferedWriter bw = bufferedWriter(portsPath)) {
+        yaml.dump(variablePorts, bw);
+      }
     }
   }
 }
