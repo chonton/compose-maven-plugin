@@ -43,7 +43,11 @@ public class ComposeUp extends ComposeProjectGoal {
 
   @Override
   @SneakyThrows
-  protected void addComposeOptions(CommandBuilder builder) {
+  protected boolean addComposeOptions(CommandBuilder builder) {
+    if (!Files.isReadable(linkedCompose.toPath())) {
+      getLog().info("No linked compose file, `compose up` not executed");
+      return false;
+    }
     createHostSourceDirs();
     if (env != null && !env.isEmpty()) {
       createEnvFile();
@@ -57,6 +61,7 @@ public class ComposeUp extends ComposeProjectGoal {
         .addOption("--quiet-pull")
         .addOption("--wait")
         .addOption("--wait-timeout", Integer.toString(timeout));
+    return true;
   }
 
   @SneakyThrows

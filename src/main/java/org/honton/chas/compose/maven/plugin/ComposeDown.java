@@ -26,9 +26,14 @@ public class ComposeDown extends ComposeProjectGoal {
   }
 
   @Override
-  protected void addComposeOptions(CommandBuilder builder) {
+  protected boolean addComposeOptions(CommandBuilder builder) {
+    if (!Files.isReadable(linkedCompose.toPath())) {
+      getLog().info("No linked compose file, `compose down` not executed");
+      return false;
+    }
     queryServiceList();
     builder.addOption("--remove-orphans").addOption("--timeout", Integer.toString(timeout));
+    return true;
   }
 
   private void queryServiceList() {

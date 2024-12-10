@@ -7,6 +7,7 @@ import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
 
 /** Compose goals base */
 public abstract class ComposeGoal extends AbstractMojo {
@@ -31,5 +32,18 @@ public abstract class ComposeGoal extends AbstractMojo {
     }
   }
 
+  @Parameter(defaultValue = "${project}", required = true, readonly = true)
+  MavenProject project;
+
   protected abstract void doExecute() throws MojoExecutionException, IOException;
+
+  String coordinatesFromClassifier(String classifier) {
+    return project.getGroupId()
+        + ':'
+        + project.getArtifactId()
+        + "::"
+        + classifier
+        + ':'
+        + project.getVersion();
+  }
 }

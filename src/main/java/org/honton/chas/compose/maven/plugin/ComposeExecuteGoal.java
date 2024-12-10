@@ -18,9 +18,10 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   protected void doExecute() throws MojoExecutionException {
     CommandBuilder builder = createBuilder(subCommand());
-    addComposeOptions(builder);
-    executeComposeCommand(timeout, builder);
-    postComposeCommand();
+    if (addComposeOptions(builder)) {
+      executeComposeCommand(timeout, builder);
+      postComposeCommand();
+    }
   }
 
   protected CommandBuilder createBuilder(String subCommand) {
@@ -38,7 +39,9 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   }
 
   // override point
-  protected void addComposeOptions(CommandBuilder builder) {}
+  protected boolean addComposeOptions(CommandBuilder builder) {
+    return true;
+  }
 
   // override point
   protected void postComposeCommand() {}
