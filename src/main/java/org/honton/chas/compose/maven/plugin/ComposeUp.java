@@ -1,7 +1,6 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
@@ -34,7 +33,9 @@ public class ComposeUp extends ComposeProjectGoal {
       defaultValue = "${project.build.directory}/compose/.env",
       required = true,
       readonly = true)
-  File envFile;
+  String envFile;
+
+  private Yaml yaml;
 
   @Override
   protected String subCommand() {
@@ -48,10 +49,11 @@ public class ComposeUp extends ComposeProjectGoal {
       getLog().info("No linked compose file, `compose up` not executed");
       return false;
     }
+    yaml = new Yaml();
     createHostSourceDirs();
     if (env != null && !env.isEmpty()) {
       createEnvFile();
-      builder.addGlobalOption("--env-file", envFile.getPath());
+      builder.addGlobalOption("--env-file", envFile);
     }
     builder
         .addGlobalOption("-f", linkedCompose.getPath())
@@ -68,7 +70,7 @@ public class ComposeUp extends ComposeProjectGoal {
   private void createEnvFile() {
     try (Writer writer =
         Files.newBufferedWriter(
-            envFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            Path.of(envFile), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
       env.forEach(
           (k, v) -> {
             try {
@@ -103,7 +105,7 @@ public class ComposeUp extends ComposeProjectGoal {
 
   private List<String> readMounts(Path mountsPath) throws IOException {
     try (BufferedReader reader = Files.newBufferedReader(mountsPath)) {
-      return new Yaml().load(reader);
+      return yaml.load(reader);
     }
   }
 
@@ -118,7 +120,7 @@ public class ComposeUp extends ComposeProjectGoal {
 
   private List<PortInfo> readPorts(Path portsPath) throws IOException {
     try (BufferedReader reader = Files.newBufferedReader(portsPath)) {
-      List<Map<String, String>> portsList = new Yaml().load(reader);
+      List<Map<String, String>> portsList = yaml.load(reader);
       return portsList.stream()
           .map(
               port ->

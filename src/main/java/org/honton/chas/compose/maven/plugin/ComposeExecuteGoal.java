@@ -1,5 +1,6 @@
 package org.honton.chas.compose.maven.plugin;
 
+import java.io.IOException;
 import lombok.Getter;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -16,7 +17,8 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   @Parameter(property = "compose.timeout", defaultValue = "30")
   public int timeout;
 
-  protected void doExecute() throws MojoExecutionException {
+  @Override
+  protected void doExecute() throws Exception {
     CommandBuilder builder = createBuilder(subCommand());
     if (addComposeOptions(builder)) {
       executeComposeCommand(timeout, builder);
@@ -39,10 +41,10 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   }
 
   // override point
-  protected boolean addComposeOptions(CommandBuilder builder) {
+  protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
     return true;
   }
 
   // override point
-  protected void postComposeCommand() {}
+  protected void postComposeCommand() throws IOException {}
 }

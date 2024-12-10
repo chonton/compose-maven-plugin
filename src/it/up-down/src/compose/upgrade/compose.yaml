@@ -13,4 +13,4 @@ services:
     volumes:
     - type: bind
       target: /tmp
-      source: ./target/tmp1
+      source: ${project.build.directory}/tmp1

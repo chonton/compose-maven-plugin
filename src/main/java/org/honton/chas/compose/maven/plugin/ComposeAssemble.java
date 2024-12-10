@@ -2,9 +2,11 @@ package org.honton.chas.compose.maven.plugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,7 +24,11 @@ import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.yaml.snakeyaml.Yaml;
 
 /** Assemble compose configuration and attach as secondary artifact */
@@ -36,187 +42,186 @@ public class ComposeAssemble extends ComposeGoal {
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
 
-  @Component MavenProjectHelper projectHelper;
-
   /**
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
   @Parameter(property = "compose.src", defaultValue = "src/compose")
-  File composeSrc;
+  String composeSrc;
 
-  private Map<String, String> serviceToContainingArtifact;
-  private List<String> artifactDependencies;
-  private Map<Path, Patch> artifactToPatches;
+  @Parameter(defaultValue = "${project}", required = true, readonly = true)
+  MavenProject project;
 
-  protected final void doExecute() throws IOException {
-    composeBuildPath = Files.createDirectories(composeBuildDirectory.toPath());
+  @Component RepositorySystem repoSystem;
 
-    int count = 0;
-    if (composeSrc.isDirectory()) {
-      serviceToContainingArtifact = new HashMap<>();
-      artifactToPatches = new HashMap<>();
+  @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
+  RepositorySystemSession repoSession;
 
-      Path composeSrcPath = composeSrc.toPath();
-      // process src/compose
-      count = jarAndAttach("compose", project.getArtifactId(), composeSrcPath);
+  @Component MavenProjectHelper projectHelper;
 
-      // process directories src/compose/_classifier_
-      try (Stream<Path> services = Files.list(composeSrcPath)) {
-        count +=
-            services
-                .mapToInt(
-                    p -> {
-                      String classifier = p.getFileName().toString();
-                      return jarAndAttach(classifier, classifier, p);
-                    })
-                .sum();
+  private ArtifactHelper artifactHelper;
+  private Yaml yaml;
+  private Map<String, ArtifactInfo> coordinatesToInfo;
+  private Map<String, String> serviceToCoordinates;
+
+  protected final void doExecute() throws Exception {
+    Path composeSrcPath = Paths.get(composeSrc);
+    if (Files.isDirectory(composeSrcPath)) {
+      yaml = new Yaml();
+      artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
+      coordinatesToInfo = new HashMap<>();
+      serviceToCoordinates = new HashMap<>();
+
+      if (dependencies != null) {
+        dependencies.forEach(this::addDependency);
       }
-      backPatchArtifacts();
+
+      artifactHelper.processComposeSrc(this::readComposeFile);
+      artifactHelper.processComposeSrc(this::writeComposeJar);
+      if (!coordinatesToInfo.isEmpty()) {
+        return;
+      }
     }
-    if (count == 0) {
-      getLog().info("No compose files found");
-    }
+    getLog().info("No compose files found");
   }
 
   @SneakyThrows
-  private int jarAndAttach(String classifier, String artifactNamespace, Path path) {
-    Path compose = path.resolve("compose.yaml");
-    if (!Files.isReadable(compose)) {
-      compose = path.resolve("compose.yml");
-      if (!Files.isReadable(compose)) {
-        return 0;
-      }
-    }
-
-    List<String> backPatchServices = extractDependenciesFromCompose(classifier, compose);
-    if (!backPatchServices.isEmpty()) {
-      artifactToPatches.put(path, new Patch(classifier, artifactNamespace, backPatchServices));
-    }
-
-    Path destPath = composeBuildPath.resolve(artifactNamespace + ".jar");
-    try (JarOutputStream destination =
-        new JarOutputStream(
-            Files.newOutputStream(
-                destPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING),
-            createManifest())) {
-      jarArtifacts(destination, artifactNamespace, path);
-    }
-    if (attach) {
-      projectHelper.attachArtifact(project, "jar", classifier, destPath.toFile());
-    }
-    return 1;
+  private void addDependency(String dependency) {
+    DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
+    String gav = artifact.toString();
+    getLog().info("Adding dependency " + gav);
+    addArtifact(gav, artifactHelper.fetchArtifact(artifact));
   }
 
-  private Manifest createManifest() {
-    Manifest manifest = new Manifest();
-    Attributes mainAttributes = manifest.getMainAttributes();
-    mainAttributes.put(Name.MANIFEST_VERSION, "1.0");
-    mainAttributes.put(Name.CONTENT_TYPE, "Compose");
-    mainAttributes.putValue("Created-By", "compose-maven-plugin");
-    String depends =
-        artifactDependencies.stream()
-            .filter(d -> d != null && !d.isEmpty())
-            .collect(Collectors.joining(","));
-    if (!depends.isEmpty()) {
-      mainAttributes.putValue("Dependencies", depends);
-    }
-    return manifest;
-  }
-
-  private void jarArtifacts(JarOutputStream jarStream, String artifactNamespace, Path current)
-      throws IOException {
-    try (DirectoryStream<Path> files = Files.newDirectoryStream(current, Files::isReadable)) {
-      for (Path fileSystemPath : files) {
-        if (Files.isRegularFile(fileSystemPath)) {
-          jarArtifact(jarStream, artifactNamespace, fileSystemPath);
-        }
-      }
+  private void addArtifact(String gav, File file) throws Exception {
+    try (JarReader jr =
+        new JarReader(file) {
+          @Override
+          void process() throws IOException {
+            if (isManifestEntry()) {
+              String[] services = extractMainAttributes(JarReader.SERVICES);
+              for (String service : services) {
+                serviceToCoordinates.put(service, gav);
+              }
+            }
+          }
+        }) {
+      jr.visitEntries();
     }
   }
 
-  private void jarArtifact(JarOutputStream jarStream, String artifactNamespace, Path fileSystemPath)
-      throws IOException {
-    Path fileName = fileSystemPath.getFileName();
-    JarEntry entry = new JarEntry(artifactNamespace + '/' + fileName);
-    entry.setTime(fileSystemPath.toFile().lastModified());
-    jarStream.putNextEntry(entry);
-    Files.copy(fileSystemPath, jarStream);
-    jarStream.closeEntry();
-  }
-
-  private List<String> extractDependenciesFromCompose(String classifier, Path compose)
-      throws IOException {
-    artifactDependencies = new ArrayList<>(dependencies != null ? dependencies : List.of());
-    Map<String, Object> model = new Yaml().load(Files.readString(compose));
-
+  void readComposeFile(String classifier, String namespace, Path composeYaml) throws IOException {
+    String contents = Files.readString(composeYaml);
+    Map<String, Object> model = yaml.load(contents);
+    String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
+    List<ServiceInfo> serviceInfos;
     if (model.get("services") instanceof Map<?, ?> services) {
-      return extractServicesInArtifact(services, coordinatesFromClassifier(classifier));
+      serviceInfos = readServices(coordinates, services);
+    } else {
+      serviceInfos = List.of();
     }
-    return List.of();
+    coordinatesToInfo.put(coordinates, new ArtifactInfo(composeYaml, contents, serviceInfos));
   }
 
-  private List<String> extractServicesInArtifact(Map<?, ?> services, String artifactCoordinates) {
-    List<String> serviceDependenciesInArtifact = new ArrayList<>();
+  private List<ServiceInfo> readServices(String coordinates, Map<?, ?> services) {
+    List<ServiceInfo> serviceInfos = new ArrayList<>();
     for (Map.Entry<?, ?> entries : services.entrySet()) {
       if (entries.getKey() instanceof String serviceName
           && entries.getValue() instanceof Map<?, ?> service) {
 
-        String priorCoordinates = serviceToContainingArtifact.put(serviceName, artifactCoordinates);
+        String priorCoordinates = serviceToCoordinates.put(serviceName, coordinates);
         if (priorCoordinates != null) {
           getLog()
               .error(
                   "Service "
                       + serviceName
                       + " defined in "
-                      + artifactCoordinates
+                      + coordinates
                       + ", previously defined in "
                       + priorCoordinates);
         }
 
-        if (service.get("depends_on") instanceof List<?> dependsOn) {
-          serviceDependenciesInArtifact.addAll((List<String>) dependsOn);
+        List<String> dependsOn;
+        if (service.get("depends_on") instanceof List<?> depends_on) {
+          dependsOn = (List<String>) depends_on;
+        } else {
+          dependsOn = List.of();
         }
+        serviceInfos.add(new ServiceInfo(serviceName, dependsOn));
       }
     }
-
-    List<String> backPatchServices = new ArrayList<>();
-    serviceDependenciesInArtifact.forEach(
-        serviceDependency -> {
-          String containingArtifact = serviceToContainingArtifact.get(serviceDependency);
-          if (containingArtifact == null) {
-            backPatchServices.add(serviceDependency);
-          } else if (!containingArtifact.equals(artifactCoordinates)) {
-            artifactDependencies.add(containingArtifact);
-          }
-        });
-    return backPatchServices;
+    return serviceInfos;
   }
 
-  private void backPatchArtifacts() {
-    artifactToPatches.forEach(
-        (artifact, backPatch) -> {
-          List<String> missingServices =
-              backPatch.missingServices.stream()
-                  .filter(service -> !serviceToContainingArtifact.containsKey(service))
-                  .toList();
-          if (!missingServices.isEmpty()) {
-            getLog()
-                .warn(
-                    "artifact "
-                        + artifact
-                        + " has missing services: "
-                        + String.join(",", missingServices));
-          }
-          if (!missingServices.equals(backPatch.missingServices)) {
-            backPatchArtifact(artifact, backPatch);
-          }
-        });
+  private void writeComposeJar(String classifier, String namespace, Path composeYaml)
+      throws IOException {
+    Path destPath = artifactHelper.jarPath(classifier);
+    String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
+    ArtifactInfo info = coordinatesToInfo.get(coordinates);
+    try (JarOutputStream destination =
+        new JarOutputStream(
+            Files.newOutputStream(
+                destPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING),
+            createManifest(info))) {
+      jarArtifact(info, destination, namespace, composeYaml.getParent());
+    }
+    if (attach) {
+      projectHelper.attachArtifact(project, "jar", classifier, destPath.toFile());
+    }
   }
 
-  private void backPatchArtifact(Path artifact, Patch patch) {
-    jarAndAttach(patch.classifier, patch.artifactNamespace, artifact);
+  private Manifest createManifest(ArtifactInfo info) {
+    Manifest manifest = new Manifest();
+    Attributes mainAttributes = manifest.getMainAttributes();
+    mainAttributes.put(Name.MANIFEST_VERSION, "1.0");
+    mainAttributes.put(Name.CONTENT_TYPE, "Compose");
+    mainAttributes.putValue("Created-By", "compose-maven-plugin");
+
+    String services =
+        info.serviceInfos.stream().map(ServiceInfo::serviceName).collect(Collectors.joining(","));
+    if (!services.isEmpty()) {
+      mainAttributes.putValue(JarReader.SERVICES, services);
+    }
+
+    String dependencyCommaList =
+        info.serviceInfos.stream()
+            .flatMap(si -> si.dependsOn.stream())
+            .flatMap(this::serviceToCoordinates)
+            .collect(Collectors.joining(","));
+    if (!dependencyCommaList.isEmpty()) {
+      mainAttributes.putValue(JarReader.DEPENDENCIES, dependencyCommaList);
+    }
+    return manifest;
   }
 
-  record Patch(String classifier, String artifactNamespace, List<String> missingServices) {}
+  private Stream<String> serviceToCoordinates(String service) {
+    return Stream.ofNullable(serviceToCoordinates.get(service));
+  }
+
+  private void jarArtifact(
+      ArtifactInfo info, JarOutputStream stream, String namespace, Path directory)
+      throws IOException {
+    try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, Files::isRegularFile)) {
+      for (Path path : files) {
+        jarFile(info, stream, namespace, path);
+      }
+    }
+  }
+
+  private void jarFile(ArtifactInfo info, JarOutputStream stream, String namespace, Path path)
+      throws IOException {
+    JarEntry entry = new JarEntry(ArtifactHelper.namespacedPath(namespace, path));
+    entry.setTime(path.toFile().lastModified());
+    stream.putNextEntry(entry);
+    if (path.equals(info.composePath)) {
+      stream.write(info.composeSpec.getBytes(StandardCharsets.UTF_8));
+    } else {
+      Files.copy(path, stream);
+    }
+    stream.closeEntry();
+  }
+
+  record ArtifactInfo(Path composePath, String composeSpec, List<ServiceInfo> serviceInfos) {}
+
+  record ServiceInfo(String serviceName, List<String> dependsOn) {}
 }

@@ -12,20 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.Manifest;
-import java.util.stream.Stream;
 import javax.inject.Inject;
-import lombok.SneakyThrows;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
@@ -37,10 +29,7 @@ import org.codehaus.plexus.interpolation.Interpolator;
 import org.codehaus.plexus.interpolation.InterpolatorFilterReader;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
-import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.resolution.ArtifactRequest;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
@@ -64,20 +53,27 @@ public class ComposeLink extends ComposeProjectGoal {
   @Parameter(defaultValue = "true")
   boolean filter;
 
-  @Parameter(defaultValue = "${project.build.directory}/compose/", required = true, readonly = true)
-  File composeProjectDir;
+  /**
+   * Directory which holds compose application configuration(s). Compose files should be in
+   * subdirectories to namespace the configuration.
+   */
+  @Parameter(property = "compose.src", defaultValue = "src/compose")
+  String composeSrc;
+
+  @Parameter(defaultValue = "${project}", required = true, readonly = true)
+  MavenProject project;
 
   @Component RepositorySystem repoSystem;
 
   @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
   RepositorySystemSession repoSession;
 
-  @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true)
-  List<RemoteRepository> remoteRepos;
+  @Parameter(defaultValue = "${project.build.directory}/compose", required = true, readonly = true)
+  File composeBuildDirectory;
 
-  CommandBuilder commandBuilder;
-  Set<String> fetchedDependencies;
-  List<String> requiredDependencies;
+  private CommandBuilder commandBuilder;
+  private Set<String> fetchedDependencies;
+  private ArtifactHelper artifactHelper;
 
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
@@ -94,111 +90,68 @@ public class ComposeLink extends ComposeProjectGoal {
         dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
   }
 
-  private static String removeJarSuffix(String serviceName) {
-    return serviceName.substring(0, serviceName.lastIndexOf('.'));
-  }
-
   @Override
   public String subCommand() {
     return "config";
   }
 
-  /**
-   * Fetch the artifact and return the local location
-   *
-   * @param artifact The artifact to fetch
-   * @return The local file location
-   */
-  @SneakyThrows
-  private File fetchArtifact(Artifact artifact) {
-    Artifact local =
-        repoSystem
-            .resolveArtifact(repoSession, new ArtifactRequest(artifact, remoteRepos, null))
-            .getArtifact();
-    if (local == null) {
-      throw new MojoExecutionException(artifact + " is not available");
-    }
-    return local.getFile();
+  private void addDependency(String dependency) throws Exception {
+    DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
+    addArtifact(artifact.toString(), artifactHelper.fetchArtifact(artifact));
   }
 
-  @SneakyThrows
-  private void addDependency(String dependency) {
-    DefaultArtifact artifact = new DefaultArtifact(dependency);
-    if ("".equals(artifact.getClassifier())) {
-      artifact =
-          new DefaultArtifact(
-              artifact.getGroupId(),
-              artifact.getArtifactId(),
-              "compose",
-              "jar",
-              artifact.getVersion());
-    }
-    String gav = artifact.toString();
-    getLog().info("Adding dependency " + gav);
-    addArtifact(gav, fetchArtifact(artifact));
-  }
-
-  @SneakyThrows
-  private void addArtifact(String gav, File localFile) {
-    try (JarFile jar = new JarFile(localFile)) {
-      Enumeration<JarEntry> entries = jar.entries();
-      while (entries.hasMoreElements()) {
-        JarEntry jarEntry = entries.nextElement();
-        if (jarEntry.isDirectory()) {
-          continue;
-        }
-        String name = jarEntry.getName();
-        if (name.equals("META-INF/MANIFEST.MF")) {
-          extractDependenciesFromManifest(jar, jarEntry);
-        } else {
-          String priorGav = extractedPaths.put(name, gav);
-          if (priorGav != null && !priorGav.equals(gav)) {
-            throw new MojoExecutionException(
-                name + " in " + gav + " was previously defined in " + priorGav);
+  private void addArtifact(String coordinates, File file) throws Exception {
+    try (JarReader jr =
+        new JarReader(file) {
+          @Override
+          void process() throws Exception {
+            if (isManifestEntry()) {
+              extractDependencies(extractMainAttributes(DEPENDENCIES));
+            } else {
+              processArtifact(coordinates, getName(), getInputStream());
+            }
           }
-          extractService(jar, jarEntry);
-        }
+        }) {
+      jr.visitEntries();
+    }
+  }
+
+  void extractDependencies(String[] dependencies) throws Exception {
+    for (String dependency : dependencies) {
+      if (fetchedDependencies.add(dependency)) {
+        addDependency(dependency);
       }
     }
   }
 
-  private void extractService(JarFile jarFile, JarEntry jarEntry) throws IOException {
-    String name = jarEntry.getName();
-    Path dstPath = composeProjectDir.toPath().resolve(Path.of(name));
+  private void processArtifact(String coordinates, String name, InputStream inputStream)
+      throws MojoExecutionException, IOException {
+    String priorGav = extractedPaths.put(name, coordinates);
+    if (priorGav != null && !priorGav.equals(coordinates)) {
+      throw new MojoExecutionException(
+          name + " in " + coordinates + " was previously defined in " + priorGav);
+    }
+
+    Path dstPath = composeBuildDirectory.toPath().resolve(Path.of(name));
     Path parent = dstPath.getParent();
     if (createdDirs.add(parent)) {
       Files.createDirectories(parent);
     }
 
-    try (InputStream source = jarFile.getInputStream(jarEntry)) {
-      copyYaml(source, dstPath);
-      if (name.endsWith("/compose.yaml")) {
-        commandBuilder.addGlobalOption("-f", dstPath.toString());
-      } else if (name.endsWith("/.env")) {
-        commandBuilder.addGlobalOption("--env-file", dstPath.toString());
-      }
+    if (name.endsWith("/compose.yaml")) {
+      commandBuilder.addGlobalOption("-f", dstPath.toString());
+    } else if (name.endsWith("/.env")) {
+      commandBuilder.addGlobalOption("--env-file", dstPath.toString());
     }
-  }
 
-  private void extractDependenciesFromManifest(JarFile jar, JarEntry jarEntry) throws IOException {
-    try (InputStream is = jar.getInputStream(jarEntry)) {
-      Manifest manifest = new Manifest(is);
-      Attributes attributes = manifest.getMainAttributes();
-      String dependencies = attributes.getValue("Dependencies");
-      if (dependencies != null) {
-        for (String dependency : dependencies.split(",")) {
-          if (fetchedDependencies.add(dependency)) {
-            addDependency(dependency);
-          }
-        }
-      }
+    try (InputStream source = inputStream) {
+      copyYaml(source, dstPath);
     }
   }
 
   private void copyYaml(InputStream source, Path dstPath) throws IOException {
     Reader reader = interpolateReader(source);
     try (BufferedWriter writer = bufferedWriter(dstPath)) {
-
       String name = dstPath.getFileName().toString();
       if (name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json")) {
         Map<String, Object> model = yaml.load(reader);
@@ -211,16 +164,16 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   private void replaceVariablePorts(Map<String, Object> model) {
-    Map<String, Map<String, Object>> services = (Map) model.get("services");
-    if (services != null) {
+    if (model.get("services") instanceof Map<?, ?> unTyped) {
+      Map<String, Map<String, Object>> services = (Map<String, Map<String, Object>>) unTyped;
       services.forEach(this::replaceVariablePorts);
       services.forEach(this::collectHostMounts);
     }
   }
 
   private void replaceVariablePorts(String serviceName, Map<String, Object> serviceDefinition) {
-    List<Object> ports = (List) serviceDefinition.get("ports");
-    if (ports != null) {
+    if (serviceDefinition.get("ports") instanceof List<?> unTyped) {
+      List<Object> ports = (List) unTyped;
       List<Object> replacement =
           ports.stream().map(port -> getReplacement(serviceName, port)).toList();
       serviceDefinition.put("ports", replacement);
@@ -273,8 +226,7 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   private void collectHostMounts(String serviceName, Map<String, Object> model) {
-    List<Object> volumes = (List) model.get("volumes");
-    if (volumes != null) {
+    if (model.get("volumes") instanceof List<?> volumes) {
       volumes.forEach(this::collectHostMount);
     }
   }
@@ -309,22 +261,24 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected boolean addComposeOptions(CommandBuilder builder) {
+  protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
     this.commandBuilder = builder;
+    Path composeSrcPath = Path.of(composeSrc);
+    artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
     fetchedDependencies = new HashSet<>();
-    requiredDependencies = new LinkedList<>();
 
     if (dependencies != null) {
-      dependencies.forEach(dependency -> addDependency(dependency));
+      for (String dependency : dependencies) {
+        addDependency(dependency);
+      }
     }
 
-    composeBuildPath = composeBuildDirectory.toPath();
-    if (Files.isDirectory(composeBuildPath)) {
-      addLocalServiceJars();
+    if (Files.isDirectory(composeSrcPath)) {
+      artifactHelper.processComposeSrc(this::processLocalArtifact);
     }
 
     builder
-        .addGlobalOption("--project-directory", composeProjectDir.getAbsolutePath())
+        .addGlobalOption("--project-directory", composeBuildDirectory.getAbsolutePath())
         .addOption("--no-interpolate")
         .addOption("-o", linkedCompose.getPath());
     if (!builder.getGlobalOptions().contains("-f")) {
@@ -334,26 +288,15 @@ public class ComposeLink extends ComposeProjectGoal {
     return true;
   }
 
-  @SneakyThrows
-  private void addLocalServiceJars() {
-    try (Stream<Path> services = Files.list(composeBuildPath)) {
-      services.forEach(
-          localJar -> {
-            if (Files.isRegularFile(localJar)) {
-              String serviceName = localJar.getFileName().toString();
-              if (serviceName.endsWith(".jar")) {
-                String gav = coordinatesFromClassifier(removeJarSuffix(serviceName));
-                getLog().info("Adding artifact " + gav);
-                addArtifact(gav, localJar.toFile());
-              }
-            }
-          });
-    }
+  private void processLocalArtifact(String classifier, String namespace, Path composeYaml)
+      throws IOException, MojoExecutionException {
+    String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
+    String namespacedPath = ArtifactHelper.namespacedPath(namespace, composeYaml);
+    processArtifact(coordinates, namespacedPath, Files.newInputStream(composeYaml));
   }
 
   @Override
-  @SneakyThrows
-  protected void postComposeCommand() {
+  protected void postComposeCommand() throws IOException {
     Path hostMountsPath = mountsFile.toPath();
     if (hostMounts.isEmpty()) {
       Files.deleteIfExists(hostMountsPath);
