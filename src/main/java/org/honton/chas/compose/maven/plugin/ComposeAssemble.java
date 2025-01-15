@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,13 +41,6 @@ public class ComposeAssemble extends ComposeGoal {
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
 
-  /**
-   * Directory which holds compose application configuration(s). Compose files should be in
-   * subdirectories to namespace the configuration.
-   */
-  @Parameter(property = "compose.src", defaultValue = "src/compose")
-  String composeSrc;
-
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
   MavenProject project;
 
@@ -65,7 +57,12 @@ public class ComposeAssemble extends ComposeGoal {
   private Map<String, String> serviceToCoordinates;
 
   protected final void doExecute() throws Exception {
-    Path composeSrcPath = Paths.get(composeSrc);
+    /*
+     * Directory which holds compose application configuration(s). Compose files should be in
+     * subdirectories to namespace the configuration.
+     */
+    Path composeSrcPath = project.getBasedir().toPath().resolve("src/compose");
+    getLog().debug("composeSrcPath " + composeSrcPath);
     if (Files.isDirectory(composeSrcPath)) {
       yaml = new Yaml();
       artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
@@ -89,7 +86,7 @@ public class ComposeAssemble extends ComposeGoal {
   private void addDependency(String dependency) {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     String gav = artifact.toString();
-    getLog().info("Adding dependency " + gav);
+    getLog().debug("Adding dependency " + gav);
     addArtifact(gav, artifactHelper.fetchArtifact(artifact));
   }
 
@@ -120,7 +117,8 @@ public class ComposeAssemble extends ComposeGoal {
     } else {
       serviceInfos = List.of();
     }
-    coordinatesToInfo.put(coordinates, new ArtifactInfo(composeYaml, contents, serviceInfos));
+    coordinatesToInfo.put(
+        coordinates, new ArtifactInfo(coordinates, composeYaml, contents, serviceInfos));
   }
 
   private List<ServiceInfo> readServices(String coordinates, Map<?, ?> services) {
@@ -144,6 +142,7 @@ public class ComposeAssemble extends ComposeGoal {
         List<String> dependsOn;
         if (service.get("depends_on") instanceof List<?> depends_on) {
           dependsOn = (List<String>) depends_on;
+          getLog().debug(serviceName + " depends on " + dependsOn);
         } else {
           dependsOn = List.of();
         }
@@ -156,8 +155,7 @@ public class ComposeAssemble extends ComposeGoal {
   private void writeComposeJar(String classifier, String namespace, Path composeYaml)
       throws IOException {
     Path destPath = artifactHelper.jarPath(classifier);
-    String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
-    ArtifactInfo info = coordinatesToInfo.get(coordinates);
+    ArtifactInfo info = coordinatesToInfo.get(artifactHelper.coordinatesFromClassifier(classifier));
     try (JarOutputStream destination =
         new JarOutputStream(
             Files.newOutputStream(
@@ -166,6 +164,7 @@ public class ComposeAssemble extends ComposeGoal {
       jarArtifact(info, destination, namespace, composeYaml.getParent());
     }
     if (attach) {
+      getLog().debug("Attaching " + destPath);
       projectHelper.attachArtifact(project, "jar", classifier, destPath.toFile());
     }
   }
@@ -187,6 +186,7 @@ public class ComposeAssemble extends ComposeGoal {
         info.serviceInfos.stream()
             .flatMap(si -> si.dependsOn.stream())
             .flatMap(this::serviceToCoordinates)
+            .filter(c -> !c.equals(info.coordinates))
             .collect(Collectors.joining(","));
     if (!dependencyCommaList.isEmpty()) {
       mainAttributes.putValue(JarReader.DEPENDENCIES, dependencyCommaList);
@@ -195,7 +195,11 @@ public class ComposeAssemble extends ComposeGoal {
   }
 
   private Stream<String> serviceToCoordinates(String service) {
-    return Stream.ofNullable(serviceToCoordinates.get(service));
+    String coordinates = serviceToCoordinates.get(service);
+    if (coordinates == null) {
+      getLog().warn("Service " + service + " not found");
+    }
+    return Stream.ofNullable(coordinates);
   }
 
   private void jarArtifact(
@@ -221,7 +225,8 @@ public class ComposeAssemble extends ComposeGoal {
     stream.closeEntry();
   }
 
-  record ArtifactInfo(Path composePath, String composeSpec, List<ServiceInfo> serviceInfos) {}
+  record ArtifactInfo(
+      String coordinates, Path composePath, String composeSpec, List<ServiceInfo> serviceInfos) {}
 
   record ServiceInfo(String serviceName, List<String> dependsOn) {}
 }

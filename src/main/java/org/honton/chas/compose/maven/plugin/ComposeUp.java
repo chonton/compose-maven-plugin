@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import lombok.SneakyThrows;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -45,7 +46,7 @@ public class ComposeUp extends ComposeProjectGoal {
   @Override
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) {
-    if (!Files.isReadable(linkedCompose.toPath())) {
+    if (!Files.isReadable(composeFile())) {
       getLog().info("No linked compose file, `compose up` not executed");
       return false;
     }
@@ -56,7 +57,7 @@ public class ComposeUp extends ComposeProjectGoal {
       builder.addGlobalOption("--env-file", envFile);
     }
     builder
-        .addGlobalOption("-f", linkedCompose.getPath())
+        .addGlobalOption("-f", composeFile().toString())
         .addOption("--renew-anon-volumes")
         .addOption("--remove-orphans")
         .addOption("--pull", "missing")
@@ -83,16 +84,16 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   private void createHostSourceDirs() throws IOException {
-    Path mountsPath = mountsFile.toPath();
-    if (Files.isReadable(mountsPath)) {
-      readMounts(mountsPath).forEach(this::createSourceDirectory);
+    Path mountsFile = mountsFile();
+    if (Files.isReadable(mountsFile)) {
+      readMounts(mountsFile).forEach(this::createSourceDirectory);
     }
   }
 
   private void createSourceDirectory(String location) {
     Path path = Path.of(location);
     if (!path.isAbsolute()) {
-      path = linkedCompose.toPath().getParent().resolve(location).normalize();
+      path = composeProject.resolve(location).normalize();
     }
     if (Files.notExists(path)) {
       try {
@@ -110,11 +111,14 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   @Override
-  @SneakyThrows
-  protected void postComposeCommand() {
-    Path portsPath = portsFile.toPath();
-    if (Files.isReadable(portsPath)) {
-      readPorts(portsPath).forEach(this::assignMavenVariable);
+  protected void postComposeCommand(int exitCode) throws IOException, MojoExecutionException {
+    if (exitCode != 0) {
+      saveServiceLogs();
+      throw new MojoExecutionException("compose exit value: " + exitCode);
+    }
+    Path portsFile = portsFile();
+    if (Files.isReadable(portsFile)) {
+      readPorts(portsFile).forEach(this::assignMavenVariable);
     }
   }
 

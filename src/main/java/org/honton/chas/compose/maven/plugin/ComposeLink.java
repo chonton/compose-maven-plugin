@@ -27,6 +27,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.interpolation.Interpolator;
 import org.codehaus.plexus.interpolation.InterpolatorFilterReader;
+import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
@@ -95,16 +96,18 @@ public class ComposeLink extends ComposeProjectGoal {
     return "config";
   }
 
-  private void addDependency(String dependency) throws Exception {
+  private void addDependency(String dependency)
+      throws MojoExecutionException, IOException, RepositoryException {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     addArtifact(artifact.toString(), artifactHelper.fetchArtifact(artifact));
   }
 
-  private void addArtifact(String coordinates, File file) throws Exception {
+  private void addArtifact(String coordinates, File file)
+      throws IOException, MojoExecutionException, RepositoryException {
     try (JarReader jr =
         new JarReader(file) {
           @Override
-          void process() throws Exception {
+          void process() throws IOException, MojoExecutionException, RepositoryException {
             if (isManifestEntry()) {
               extractDependencies(extractMainAttributes(DEPENDENCIES));
             } else {
@@ -116,7 +119,8 @@ public class ComposeLink extends ComposeProjectGoal {
     }
   }
 
-  void extractDependencies(String[] dependencies) throws Exception {
+  void extractDependencies(String[] dependencies)
+      throws MojoExecutionException, IOException, RepositoryException {
     for (String dependency : dependencies) {
       if (fetchedDependencies.add(dependency)) {
         addDependency(dependency);
@@ -280,7 +284,7 @@ public class ComposeLink extends ComposeProjectGoal {
     builder
         .addGlobalOption("--project-directory", composeBuildDirectory.getAbsolutePath())
         .addOption("--no-interpolate")
-        .addOption("-o", linkedCompose.getPath());
+        .addOption("-o", composeFile().toString());
     if (!builder.getGlobalOptions().contains("-f")) {
       getLog().info("No artifacts to link, `compose config` not executed");
       return false;
@@ -296,21 +300,23 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand() throws IOException {
-    Path hostMountsPath = mountsFile.toPath();
+  protected void postComposeCommand(int exitCode) throws IOException, MojoExecutionException {
+    super.postComposeCommand(exitCode);
+
+    Path mountsFile = mountsFile();
     if (hostMounts.isEmpty()) {
-      Files.deleteIfExists(hostMountsPath);
+      Files.deleteIfExists(mountsFile);
     } else {
-      try (BufferedWriter bw = bufferedWriter(hostMountsPath)) {
+      try (BufferedWriter bw = bufferedWriter(mountsFile)) {
         yaml.dump(hostMounts.toArray(), bw);
       }
     }
 
-    Path portsPath = portsFile.toPath();
+    Path portsFile = portsFile();
     if (variablePorts.isEmpty()) {
-      Files.deleteIfExists(portsPath);
+      Files.deleteIfExists(portsFile);
     } else {
-      try (BufferedWriter bw = bufferedWriter(portsPath)) {
+      try (BufferedWriter bw = bufferedWriter(portsFile)) {
         yaml.dump(variablePorts, bw);
       }
     }

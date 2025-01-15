@@ -35,19 +35,19 @@ public class ExecHelper {
     errorOutput = new StringBuilder();
 
     debugLine =
-        (lineText) -> {
+        lineText -> {
           if (lineText != null) {
             log.debug(lineText);
           }
         };
     infoLine =
-        (lineText) -> {
+        lineText -> {
           if (lineText != null) {
             log.info(lineText);
           }
         };
     errorLine =
-        (lineText) -> {
+        lineText -> {
           if (lineText != null) {
             errorOutput.append(lineText);
             Matcher warning = WARNING.matcher(lineText);

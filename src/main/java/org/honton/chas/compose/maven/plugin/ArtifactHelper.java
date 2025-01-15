@@ -70,13 +70,13 @@ class ArtifactHelper {
     return local.getFile();
   }
 
-  void processComposeSrc(PathConsumer throwsConsumer) throws IOException {
-    NoThrowConsumer consumer =
-        new NoThrowConsumer() {
+  void processComposeSrc(PathConsumer pathConsumer) throws IOException {
+    SneakyThrowsConsumer consumer =
+        new SneakyThrowsConsumer() {
           @SneakyThrows
           @Override
           public void process(String classifier, String namespace, Path composeYaml) {
-            throwsConsumer.process(classifier, namespace, composeYaml);
+            pathConsumer.process(classifier, namespace, composeYaml);
           }
         };
 
@@ -114,12 +114,12 @@ class ArtifactHelper {
 
   @FunctionalInterface
   interface PathConsumer {
-
-    void process(String classifier, String namespace, Path composeYaml) throws Exception;
+    void process(String classifier, String namespace, Path composeYaml)
+        throws IOException, MojoExecutionException;
   }
 
   @FunctionalInterface
-  interface NoThrowConsumer {
+  interface SneakyThrowsConsumer {
     void process(String classifier, String namespace, Path composeYaml);
   }
 }

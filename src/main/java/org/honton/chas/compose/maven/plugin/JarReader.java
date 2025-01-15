@@ -7,21 +7,27 @@ import java.util.Enumeration;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.eclipse.aether.RepositoryException;
 
 abstract class JarReader implements AutoCloseable {
 
+  /** manifest entry that has comma separated list of services offered by the artifact */
   public static final String SERVICES = "Services";
+
+  /** manifest entry that has comma separated list of dependent artifacts */
   public static final String DEPENDENCIES = "Dependencies";
+
   private static final String[] EMPTY = new String[] {};
 
   private final JarFile jarFile;
   private JarEntry jarEntry;
 
-  JarReader(File localFile) throws Exception {
+  JarReader(File localFile) throws IOException {
     jarFile = new JarFile(localFile);
   }
 
-  void visitEntries() throws Exception {
+  void visitEntries() throws IOException, MojoExecutionException, RepositoryException {
     Enumeration<JarEntry> entries = jarFile.entries();
     while (entries.hasMoreElements()) {
       jarEntry = entries.nextElement();
@@ -40,11 +46,11 @@ abstract class JarReader implements AutoCloseable {
   }
 
   @Override
-  public void close() throws Exception {
+  public void close() throws IOException {
     jarFile.close();
   }
 
-  abstract void process() throws Exception;
+  abstract void process() throws IOException, MojoExecutionException, RepositoryException;
 
   boolean isManifestEntry() {
     return jarEntry.getName().equals("META-INF/MANIFEST.MF");
