@@ -20,7 +20,10 @@ public class ComposeDown extends ComposeProjectGoal {
       return false;
     }
     saveServiceLogs();
-    builder.addOption("--remove-orphans").addOption("--timeout", Integer.toString(timeout));
+    builder
+        .addOption("--remove-orphans")
+        .addOption("--volumes")
+        .addOption("--timeout", Integer.toString(timeout));
     return true;
   }
 }
