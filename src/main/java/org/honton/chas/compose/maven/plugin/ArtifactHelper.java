@@ -10,6 +10,7 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -70,7 +71,7 @@ class ArtifactHelper {
     return local.getFile();
   }
 
-  void processComposeSrc(PathConsumer pathConsumer) throws IOException {
+  void processComposeSrc(Log log, PathConsumer pathConsumer) throws IOException {
     SneakyThrowsConsumer consumer =
         new SneakyThrowsConsumer() {
           @SneakyThrows
@@ -81,12 +82,14 @@ class ArtifactHelper {
         };
 
     // process src/compose
+    log.debug("processing " + composeSrc);
     Optional<Path> composeYaml = findComposePath(composeSrc);
     composeYaml.ifPresent(path -> consumer.process("compose", project.getArtifactId(), path));
 
     // process directories src/compose/_classifier_
     try (DirectoryStream<Path> files = Files.newDirectoryStream(composeSrc, Files::isReadable)) {
       for (Path dir : files) {
+        log.debug("processing " + dir);
         composeYaml = findComposePath(dir);
         composeYaml.ifPresent(
             path -> {

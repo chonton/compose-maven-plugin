@@ -38,17 +38,8 @@ import org.yaml.snakeyaml.Yaml;
 @Mojo(name = "link", defaultPhase = LifecyclePhase.TEST, threadSafe = true)
 public class ComposeLink extends ComposeProjectGoal {
 
-  private final Interpolator interpolator;
-  private final Yaml yaml;
-  private final Map<String, String> extractedPaths = new HashMap<>();
-  private final Set<Path> createdDirs = new HashSet<>();
-  private final Set<String> hostMounts = new HashSet<>();
-
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
-
-  /** Ports to resolve */
-  @Parameter List<Map<String, String>> variablePorts = new ArrayList<>();
 
   /** Interpolate compose configuration with values from maven build properties */
   @Parameter(defaultValue = "true")
@@ -58,7 +49,7 @@ public class ComposeLink extends ComposeProjectGoal {
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
-  @Parameter(property = "compose.src", defaultValue = "src/compose")
+  @Parameter(defaultValue = "${project.basedir}/src/compose")
   String composeSrc;
 
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
@@ -75,6 +66,13 @@ public class ComposeLink extends ComposeProjectGoal {
   private CommandBuilder commandBuilder;
   private Set<String> fetchedDependencies;
   private ArtifactHelper artifactHelper;
+
+  private final Interpolator interpolator;
+  private final Yaml yaml;
+  private final Map<String, String> extractedPaths = new HashMap<>();
+  private final Set<Path> createdDirs = new HashSet<>();
+  private final Set<String> hostMounts = new HashSet<>();
+  private final List<Map<String, String>> variablePorts = new ArrayList<>();
 
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
@@ -278,7 +276,7 @@ public class ComposeLink extends ComposeProjectGoal {
     }
 
     if (Files.isDirectory(composeSrcPath)) {
-      artifactHelper.processComposeSrc(this::processLocalArtifact);
+      artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact);
     }
 
     builder
@@ -300,8 +298,8 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(int exitCode) throws IOException, MojoExecutionException {
-    super.postComposeCommand(exitCode);
+  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
+    super.postComposeCommand(exitMessage);
 
     Path mountsFile = mountsFile();
     if (hostMounts.isEmpty()) {

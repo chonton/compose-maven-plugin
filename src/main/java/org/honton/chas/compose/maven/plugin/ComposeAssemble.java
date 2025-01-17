@@ -41,6 +41,13 @@ public class ComposeAssemble extends ComposeGoal {
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
 
+  /**
+   * Directory which holds compose application configuration(s). Compose files should be in
+   * subdirectories to namespace the configuration.
+   */
+  @Parameter(defaultValue = "${project.basedir}/src/compose")
+  String composeSrc;
+
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
   MavenProject project;
 
@@ -61,8 +68,7 @@ public class ComposeAssemble extends ComposeGoal {
      * Directory which holds compose application configuration(s). Compose files should be in
      * subdirectories to namespace the configuration.
      */
-    Path composeSrcPath = project.getBasedir().toPath().resolve("src/compose");
-    getLog().debug("composeSrcPath " + composeSrcPath);
+    Path composeSrcPath = Path.of(composeSrc);
     if (Files.isDirectory(composeSrcPath)) {
       yaml = new Yaml();
       artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
@@ -73,11 +79,13 @@ public class ComposeAssemble extends ComposeGoal {
         dependencies.forEach(this::addDependency);
       }
 
-      artifactHelper.processComposeSrc(this::readComposeFile);
-      artifactHelper.processComposeSrc(this::writeComposeJar);
+      artifactHelper.processComposeSrc(getLog(), this::readComposeFile);
+      artifactHelper.processComposeSrc(getLog(), this::writeComposeJar);
       if (!coordinatesToInfo.isEmpty()) {
         return;
       }
+    } else {
+      getLog().warn("Not a directory: " + composeSrcPath);
     }
     getLog().info("No compose files found");
   }
