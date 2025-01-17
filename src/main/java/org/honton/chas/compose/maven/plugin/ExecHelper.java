@@ -132,13 +132,13 @@ public class ExecHelper {
   }
 
   public void waitNoError(int secondsToWait) {
-    int exitCode = waitForResult(secondsToWait);
-    if (exitCode != 0) {
-      throw new IllegalStateException("command exited with error - " + exitCode);
+    String message = waitForResult(secondsToWait);
+    if (message != null) {
+      throw new IllegalStateException(message);
     }
   }
 
-  public int waitForResult(int secondsToWait) {
+  public String waitForResult(int secondsToWait) {
     long timeToGo = TimeUnit.SECONDS.toMillis(secondsToWait);
     long endTime = System.currentTimeMillis() + timeToGo;
     try {
@@ -147,12 +147,12 @@ public class ExecHelper {
         if (poll != null) {
           Object taskExit = poll.get();
           if (taskExit instanceof Integer exit) {
-            return exit;
+            return exit != 0 ? "command exited with code " + exit : null;
           }
         }
         timeToGo = endTime - System.currentTimeMillis();
       } while (timeToGo > 0);
-      throw new IllegalStateException("timed out");
+      return "timed out";
     } catch (InterruptedException | ExecutionException ex) {
       throw new IllegalStateException(ex);
     }
@@ -171,7 +171,7 @@ public class ExecHelper {
     waitNoError(secondsToWait);
   }
 
-  public int waitForExit(int secondsToWait, CommandBuilder builder) {
+  public String waitForExit(int secondsToWait, CommandBuilder builder) {
     createProcess(builder, null, null, null);
     return waitForResult(secondsToWait);
   }

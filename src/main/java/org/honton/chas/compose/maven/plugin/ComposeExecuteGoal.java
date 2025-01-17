@@ -31,7 +31,7 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   protected abstract String subCommand();
 
-  private int executeComposeCommand(int secondsToWait, CommandBuilder builder) {
+  private String executeComposeCommand(int secondsToWait, CommandBuilder builder) {
     return new ExecHelper(this.getLog()).waitForExit(secondsToWait, builder);
   }
 
@@ -41,9 +41,9 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
   }
 
   // override point
-  protected void postComposeCommand(int exitCode) throws IOException, MojoExecutionException {
-    if (exitCode != 0) {
-      throw new MojoExecutionException("compose exit value: " + exitCode);
+  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
+    if (exitMessage != null) {
+      throw new MojoExecutionException(exitMessage);
     }
   }
 }
