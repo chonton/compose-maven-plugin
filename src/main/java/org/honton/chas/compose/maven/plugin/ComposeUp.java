@@ -10,11 +10,16 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import javax.inject.Inject;
 import lombok.SneakyThrows;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.interpolation.InterpolationException;
+import org.codehaus.plexus.interpolation.Interpolator;
 import org.yaml.snakeyaml.Yaml;
 
 /** Turn on compose application */
@@ -27,8 +32,14 @@ public class ComposeUp extends ComposeProjectGoal {
   /** Environment variables to apply */
   @Parameter Map<String, String> env;
 
-  @Parameter(defaultValue = "${project.properties}", required = true, readonly = true)
-  Properties properties;
+  /**
+   * Map&lt;String,String> of user property aliases. After maven user properties are assigned with
+   * host port values, each alias is interpolated and is assigned.
+   */
+  @Parameter Map<String, String> alias;
+
+  @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
+  Properties userProperties;
 
   @Parameter(
       defaultValue = "${project.build.directory}/compose/.env",
@@ -37,6 +48,12 @@ public class ComposeUp extends ComposeProjectGoal {
   String envFile;
 
   private Yaml yaml;
+  private final Interpolator interpolator;
+
+  @Inject
+  public ComposeUp(MavenSession session, MavenProject project) {
+    interpolator = InterpolatorFactory.createInterpolator(session, project);
+  }
 
   @Override
   protected String subCommand() {
@@ -111,14 +128,21 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(int exitCode) throws IOException, MojoExecutionException {
-    if (exitCode != 0) {
+  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
+    if (exitMessage != null) {
       saveServiceLogs();
-      throw new MojoExecutionException("compose exit value: " + exitCode);
+      throw new MojoExecutionException(exitMessage);
     }
     Path portsFile = portsFile();
     if (Files.isReadable(portsFile)) {
       readPorts(portsFile).forEach(this::assignMavenVariable);
+    }
+    if (alias != null) {
+      try {
+        interpolateAliases();
+      } catch (InterpolationException e) {
+        throw new MojoExecutionException(e);
+      }
     }
   }
 
@@ -141,6 +165,20 @@ public class ComposeUp extends ComposeProjectGoal {
       port = port.substring(ALL_INTERFACES_LEN);
     }
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
-    properties.put(portInfo.getProperty(), port);
+    userProperties.put(portInfo.getProperty(), port);
+  }
+
+  private void interpolateAliases() throws InterpolationException {
+    for (Map.Entry<String, String> alias : alias.entrySet()) {
+      String name = alias.getKey();
+      String target = interpolator.interpolate(alias.getValue());
+      String value = userProperties.getProperty(target);
+      if (value != null) {
+        getLog().info("Alias " + name + " to " + target + " (" + value + ")");
+        userProperties.put(name, value);
+      } else {
+        getLog().warn("Alias " + name + '(' + target + ") does not have value");
+      }
+    }
   }
 }

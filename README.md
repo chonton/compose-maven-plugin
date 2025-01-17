@@ -17,13 +17,13 @@ maven project that builds an image can also supply its portion of a compose appl
 Downstream services do not need to know the configuration of its dependencies; the configuration is
 supplied via the `compose` artifact saved in the maven repository.
 
-Build your images using [docker-maven-plugin](https://dmp.fabric8.io/),
-[jib](https://github.com/GoogleContainerTools/jib/tree/master/jib-maven-plugin), or
-[buildpacks](https://github.com/paketo-buildpacks/maven). Deploy compose application during
-**pre-integration-test** phase. Use
-[failsafe](https://maven.apache.org/surefire/maven-failsafe-plugin/) to run integration tests during
-the **integration-test** phase. Capture logs and halt compose application during the
-**post-integration-test** phase.
+- Build your images using [docker-maven-plugin](https://dmp.fabric8.io/),
+  [jib](https://github.com/GoogleContainerTools/jib/tree/master/jib-maven-plugin), or
+  [buildpacks](https://github.com/paketo-buildpacks/maven)
+- Deploy compose application and capture host port assignments during **pre-integration-test** phase.
+- Use [failsafe](https://maven.apache.org/surefire/maven-failsafe-plugin/) to run integration tests during
+  the **integration-test** phase.
+- Capture logs and halt compose application during the **post-integration-test** phase.
 
 # Plugin
 
@@ -96,7 +96,16 @@ If using the first form, the classifier defaults to `compose`.
 The [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) goal binds by default to the
 **pre-integration-test** phase. This goal executes `docker compose up` using **target/compose/compose.yaml**. If the
 `published` field of any [service port](https://docs.docker.com/compose/compose-file/05-services/#ports) is defined with
-a non-numeric name, a maven property of that name will be set with the assigned port.
+a non-numeric name, a maven user property of that name will be set with the assigned port.
+
+### Configuration
+
+| Parameter | Description                  |
+|----------:|:-----------------------------|
+|     alias | Map of user property aliases |
+
+After user properties for ports are set, alias user properties are evaluated. For each alias, the alias value is
+interpolated. The user property named with the alias key is set to the interpolation result.
 
 ## Down Goal
 
@@ -113,14 +122,13 @@ directory.
 ## Typical Use
 
 ```xml
-
 <build>
   <pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.1</version>
+        <version>0.0.4</version>
       </plugin>
     </plugins>
   </pluginManagement>
@@ -149,15 +157,27 @@ directory.
 ```yaml
 # This file is located at src/compose/my-app
 services:
-  may-app:
+  my-app:
     image: docker.io/library/alpine:${ALPINE_VERSION}
     command: /bin/ash -c "echo 'upgrade' && sleep ${sleep.time}"
     ports:
-    - "http.port:80" # maven property http.port will be set with `host` port mapped to port 80
+    - http.port:80 # maven property http.port set to value of host port mapped to container port 80
     - name: https
       target: 443
-      published: https.port # maven property https.port will be set with `host` port mapped to port 443
+      published: my-app.https.port # maven property my-app.https.port set to value of host port mapped to container port 443
       protocol: tcp
       app_protocol: http
       mode: host
+```
+
+### Alias Example
+
+With the following configuration for the `up` goal, used with the above compose and with maven property `docker.service`
+set to `my-app`, results in the maven user property `https.port` set to the value of host port mapped to container
+`my-app` port 443.
+
+```xml
+    <alias>
+      <https.port>${docker.service}.https.port</https.port>
+    </alias>
 ```
