@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,12 +20,14 @@ import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
+import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
@@ -45,7 +48,7 @@ public class ComposeAssemble extends ComposeGoal {
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
-  @Parameter(defaultValue = "${project.basedir}/src/compose")
+  @Parameter(defaultValue = "${project.basedir}/src/main/compose")
   String composeSrc;
 
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
@@ -98,7 +101,8 @@ public class ComposeAssemble extends ComposeGoal {
     addArtifact(gav, artifactHelper.fetchArtifact(artifact));
   }
 
-  private void addArtifact(String gav, File file) throws Exception {
+  private void addArtifact(String gav, File file)
+      throws IOException, MojoExecutionException, RepositoryException {
     try (JarReader jr =
         new JarReader(file) {
           @Override
@@ -147,13 +151,15 @@ public class ComposeAssemble extends ComposeGoal {
                       + priorCoordinates);
         }
 
-        List<String> dependsOn;
-        if (service.get("depends_on") instanceof List<?> depends_on) {
-          dependsOn = (List<String>) depends_on;
-          getLog().debug(serviceName + " depends on " + dependsOn);
-        } else {
-          dependsOn = List.of();
+        List<String> dependsOn = new ArrayList<>();
+        if (service.get("depends_on") instanceof List<?> serviceDependsOn) {
+          dependsOn.addAll((Collection<? extends String>) serviceDependsOn);
         }
+        if (service.get("extends") instanceof Map<?, ?> serviceExtends
+            && serviceExtends.get("service") instanceof String dependentService) {
+          dependsOn.add(dependentService);
+        }
+        getLog().debug(serviceName + " depends on " + dependsOn);
         serviceInfos.add(new ServiceInfo(serviceName, dependsOn));
       }
     }

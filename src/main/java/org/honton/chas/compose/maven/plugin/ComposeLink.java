@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
@@ -49,7 +50,7 @@ public class ComposeLink extends ComposeProjectGoal {
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
-  @Parameter(defaultValue = "${project.basedir}/src/compose")
+  @Parameter(defaultValue = "${project.basedir}/src/main/compose")
   String composeSrc;
 
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
@@ -60,9 +61,6 @@ public class ComposeLink extends ComposeProjectGoal {
   @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
   RepositorySystemSession repoSession;
 
-  @Parameter(defaultValue = "${project.build.directory}/compose", required = true, readonly = true)
-  File composeBuildDirectory;
-
   private CommandBuilder commandBuilder;
   private Set<String> fetchedDependencies;
   private ArtifactHelper artifactHelper;
@@ -72,7 +70,7 @@ public class ComposeLink extends ComposeProjectGoal {
   private final Map<String, String> extractedPaths = new HashMap<>();
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
-  private final List<Map<String, String>> variablePorts = new ArrayList<>();
+  private final List<PortInfo> variablePorts = new ArrayList<>();
 
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
@@ -134,7 +132,7 @@ public class ComposeLink extends ComposeProjectGoal {
           name + " in " + coordinates + " was previously defined in " + priorGav);
     }
 
-    Path dstPath = composeBuildDirectory.toPath().resolve(Path.of(name));
+    Path dstPath = composeProject.resolve(name);
     Path parent = dstPath.getParent();
     if (createdDirs.add(parent)) {
       Files.createDirectories(parent);
@@ -224,7 +222,15 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   private void addVariablePort(String serviceName, String property, String container) {
-    variablePorts.add(Map.of("service", serviceName, "property", property, "container", container));
+    PortInfo variablePort = new PortInfo().setService(serviceName).setContainer(container);
+    if (property.startsWith("${") && property.endsWith("}")) {
+      String key = property.substring(2, property.length() - 1);
+      String env = key.toUpperCase(Locale.ROOT).replace('.', '_');
+      variablePort.setProperty(key).setEnv(env);
+    } else {
+      variablePort.setProperty(property);
+    }
+    variablePorts.add(variablePort);
   }
 
   private void collectHostMounts(String serviceName, Map<String, Object> model) {
@@ -280,7 +286,7 @@ public class ComposeLink extends ComposeProjectGoal {
     }
 
     builder
-        .addGlobalOption("--project-directory", composeBuildDirectory.getAbsolutePath())
+        .addGlobalOption("--project-directory", composeProject.toString())
         .addOption("--no-interpolate")
         .addOption("-o", composeFile().toString());
     if (!builder.getGlobalOptions().contains("-f")) {
@@ -315,7 +321,7 @@ public class ComposeLink extends ComposeProjectGoal {
       Files.deleteIfExists(portsFile);
     } else {
       try (BufferedWriter bw = bufferedWriter(portsFile)) {
-        yaml.dump(variablePorts, bw);
+        yaml.dump(variablePorts.stream().map(PortInfo::toMap).toList(), bw);
       }
     }
   }

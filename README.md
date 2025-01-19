@@ -41,12 +41,12 @@ at [plugin info](https://chonton.github.io/compose-maven-plugin/plugin-info.html
 ## Assemble Goal
 
 The [assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) goal binds by
-default to the **compile** phase. This goal assembles a jar from the contents of directories in
-**src/compose**. If there is a compose.yaml in **src/compose**, any regular files in **src/compose** will be added to a
-compose jar. The jar is attached as secondary artifact with classifier `compose`.
+default to the **compile** phase. This goal assembles a jar from the contents of directories in **src/main/compose**. If
+there is a compose.yaml in **src/main/compose**, any regular files in **src/main/compose** will be added to a compose
+jar. The jar is attached as secondary artifact with classifier `compose`.
 
-Any directories in **src/compose** with a compose.yaml will likewise be jarred. These jars will be attached as secondary
-artifacts with a classifier corresponding to the directory name.
+Any directories in **src/main/compose** with a compose.yaml will likewise be jarred. These jars will be attached as
+secondary artifacts with a classifier corresponding to the directory name.
 
 Secondary artifacts are installed during **install** phase and deployed during **deploy** phase.
 
@@ -94,9 +94,11 @@ If using the first form, the classifier defaults to `compose`.
 ## Up Goal
 
 The [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) goal binds by default to the
-**pre-integration-test** phase. This goal executes `docker compose up` using **target/compose/compose.yaml**. If the
+**pre-integration-test** phase. This goal executes `docker compose up` using **target/compose/compose.yaml**. If a
 `published` field of any [service port](https://docs.docker.com/compose/compose-file/05-services/#ports) is defined with
-a non-numeric name, a maven user property of that name will be set with the assigned port.
+a non-numeric name, a maven user property of that name will be set with the assigned port. If the `published` field is
+a value of form `${property}`, then a port is allocated, and an environment variable is added to the `.env` file which
+can then be used in interpolation by compose. 
 
 ### Configuration
 
@@ -122,13 +124,14 @@ directory.
 ## Typical Use
 
 ```xml
+
 <build>
   <pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.4</version>
+        <version>0.0.5</version>
       </plugin>
     </plugins>
   </pluginManagement>
@@ -177,7 +180,8 @@ set to `my-app`, results in the maven user property `https.port` set to the valu
 `my-app` port 443.
 
 ```xml
-    <alias>
-      <https.port>${docker.service}.https.port</https.port>
-    </alias>
+
+<alias>
+  <https.port>${docker.service}.https.port</https.port>
+</alias>
 ```

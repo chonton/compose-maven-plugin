@@ -4,9 +4,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -28,9 +30,10 @@ public class ComposeUp extends ComposeProjectGoal {
 
   private static final String ALL_INTERFACES = "0.0.0.0:";
   private static final int ALL_INTERFACES_LEN = ALL_INTERFACES.length();
+  private final Interpolator interpolator;
 
   /** Environment variables to apply */
-  @Parameter Map<String, String> env;
+  @Parameter Map<String, String> env = new HashMap<>();
 
   /**
    * Map&lt;String,String> of user property aliases. After maven user properties are assigned with
@@ -48,7 +51,7 @@ public class ComposeUp extends ComposeProjectGoal {
   String envFile;
 
   private Yaml yaml;
-  private final Interpolator interpolator;
+  private List<PortInfo> portInfos;
 
   @Inject
   public ComposeUp(MavenSession session, MavenProject project) {
@@ -63,18 +66,24 @@ public class ComposeUp extends ComposeProjectGoal {
   @Override
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) {
-    if (!Files.isReadable(composeFile())) {
+    Path composeFile = composeFile();
+    if (!Files.isReadable(composeFile)) {
       getLog().info("No linked compose file, `compose up` not executed");
       return false;
     }
     yaml = new Yaml();
     createHostSourceDirs();
+
+    Path portsFile = portsFile();
+    portInfos = Files.isReadable(portsFile) ? readPorts(portsFile) : List.of();
+    allocatePorts();
+
     if (env != null && !env.isEmpty()) {
       createEnvFile();
       builder.addGlobalOption("--env-file", envFile);
     }
     builder
-        .addGlobalOption("-f", composeFile().toString())
+        .addGlobalOption("-f", composeFile.toString())
         .addOption("--renew-anon-volumes")
         .addOption("--remove-orphans")
         .addOption("--pull", "missing")
@@ -84,8 +93,25 @@ public class ComposeUp extends ComposeProjectGoal {
     return true;
   }
 
-  @SneakyThrows
-  private void createEnvFile() {
+  private void allocatePorts() throws IOException {
+    for (PortInfo portInfo : portInfos) {
+      String envVar = portInfo.getEnv();
+      if (envVar != null) {
+        String key = portInfo.getProperty();
+        String value = userProperties.getProperty(key);
+        if (value == null) {
+          try (ServerSocket serverSocket = new ServerSocket(0)) {
+            value = Integer.toString(serverSocket.getLocalPort());
+            getLog().info("Allocated port: " + value + " for environment variable: " + envVar);
+          }
+          userProperties.setProperty(key, value);
+        }
+        env.put(envVar, value);
+      }
+    }
+  }
+
+  private void createEnvFile() throws IOException {
     try (Writer writer =
         Files.newBufferedWriter(
             Path.of(envFile), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -128,15 +154,12 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
+  protected void postComposeCommand(String exitMessage) throws MojoExecutionException {
     if (exitMessage != null) {
       saveServiceLogs();
       throw new MojoExecutionException(exitMessage);
     }
-    Path portsFile = portsFile();
-    if (Files.isReadable(portsFile)) {
-      readPorts(portsFile).forEach(this::assignMavenVariable);
-    }
+    portInfos.forEach(this::assignMavenVariable);
     if (alias != null) {
       try {
         interpolateAliases();
@@ -148,12 +171,7 @@ public class ComposeUp extends ComposeProjectGoal {
 
   private List<PortInfo> readPorts(Path portsPath) throws IOException {
     try (BufferedReader reader = Files.newBufferedReader(portsPath)) {
-      List<Map<String, String>> portsList = yaml.load(reader);
-      return portsList.stream()
-          .map(
-              port ->
-                  new PortInfo(port.get("property"), port.get("service"), port.get("container")))
-          .toList();
+      return yaml.<List<Map<String, String>>>load(reader).stream().map(PortInfo::fromMap).toList();
     }
   }
 
@@ -169,9 +187,9 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   private void interpolateAliases() throws InterpolationException {
-    for (Map.Entry<String, String> alias : alias.entrySet()) {
-      String name = alias.getKey();
-      String target = interpolator.interpolate(alias.getValue());
+    for (Map.Entry<String, String> aliasEntry : alias.entrySet()) {
+      String name = aliasEntry.getKey();
+      String target = interpolator.interpolate(aliasEntry.getValue());
       String value = userProperties.getProperty(target);
       if (value != null) {
         getLog().info("Alias " + name + " to " + target + " (" + value + ")");
