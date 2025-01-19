@@ -12,7 +12,7 @@ if (!pattern.matcher(content).find()) {
   throw new IllegalStateException("ports not set");
 }
 
-Path composeDir = basedir.toPath().resolve("target/compose");
+Path composeDir = basedir.toPath().resolve("target/compose-logs");
 if (composeDir.resolve("my-service.log").toFile().length() == 0) {
   throw new IllegalStateException("empty my-service.log");
 }

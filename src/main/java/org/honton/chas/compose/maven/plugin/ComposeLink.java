@@ -46,18 +46,18 @@ public class ComposeLink extends ComposeProjectGoal {
   @Parameter List<String> dependencies;
 
   /** Interpolate compose configuration with values from maven build properties */
-  @Parameter(defaultValue = "true")
+  @Parameter(property = "compose.filter", defaultValue = "true")
   boolean filter;
 
   /**
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
-  @Parameter(defaultValue = "${project.basedir}/src/main/compose")
-  String composeSrc;
+  @Parameter(property = "compose.source", defaultValue = "${project.basedir}/src/main/compose")
+  String source;
 
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
-  MavenProject project;
+  MavenProject mavenProject;
 
   @Component RepositorySystem repoSystem;
 
@@ -321,8 +321,8 @@ public class ComposeLink extends ComposeProjectGoal {
   @Override
   protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
     this.commandBuilder = builder;
-    Path composeSrcPath = Path.of(composeSrc);
-    artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
+    Path composeSrcPath = Path.of(source);
+    artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
     if (dependencies != null) {
       for (String dependency : dependencies) {
@@ -337,7 +337,7 @@ public class ComposeLink extends ComposeProjectGoal {
     builder
         .addGlobalOption("--project-directory", composeProject.toString())
         .addOption("--no-interpolate")
-        .addOption("-o", composeFile().toString());
+        .addOption("-o", composeProject.resolve(COMPOSE_YAML).toString());
     if (!builder.getGlobalOptions().contains("-f")) {
       getLog().info("No artifacts to link, `compose config` not executed");
       return false;
@@ -356,7 +356,7 @@ public class ComposeLink extends ComposeProjectGoal {
   protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
     super.postComposeCommand(exitMessage);
 
-    Path mountsFile = mountsFile();
+    Path mountsFile = composeProject.resolve(MOUNTS_YAML);
     if (hostMounts.isEmpty()) {
       Files.deleteIfExists(mountsFile);
     } else {
@@ -365,7 +365,7 @@ public class ComposeLink extends ComposeProjectGoal {
       }
     }
 
-    Path portsFile = portsFile();
+    Path portsFile = composeProject.resolve(PORTS_YAML);
     if (variablePorts.isEmpty()) {
       Files.deleteIfExists(portsFile);
     } else {

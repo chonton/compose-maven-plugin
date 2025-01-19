@@ -26,7 +26,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /** Turn on compose application */
 @Mojo(name = "up", defaultPhase = LifecyclePhase.PRE_INTEGRATION_TEST, threadSafe = true)
-public class ComposeUp extends ComposeProjectGoal {
+public class ComposeUp extends ComposeLogsGoal {
 
   private static final String ALL_INTERFACES = "0.0.0.0:";
   private static final int ALL_INTERFACES_LEN = ALL_INTERFACES.length();
@@ -44,12 +44,6 @@ public class ComposeUp extends ComposeProjectGoal {
   @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
   Properties userProperties;
 
-  @Parameter(
-      defaultValue = "${project.build.directory}/compose/.env",
-      required = true,
-      readonly = true)
-  String envFile;
-
   private Yaml yaml;
   private List<PortInfo> portInfos;
 
@@ -66,7 +60,7 @@ public class ComposeUp extends ComposeProjectGoal {
   @Override
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) {
-    Path composeFile = composeFile();
+    Path composeFile = composeProject.resolve(COMPOSE_YAML);
     if (!Files.isReadable(composeFile)) {
       getLog().info("No linked compose file, `compose up` not executed");
       return false;
@@ -74,13 +68,12 @@ public class ComposeUp extends ComposeProjectGoal {
     yaml = new Yaml();
     createHostSourceDirs();
 
-    Path portsFile = portsFile();
+    Path portsFile = composeProject.resolve(PORTS_YAML);
     portInfos = Files.isReadable(portsFile) ? readPorts(portsFile) : List.of();
     allocatePorts();
 
     if (env != null && !env.isEmpty()) {
-      createEnvFile();
-      builder.addGlobalOption("--env-file", envFile);
+      builder.addGlobalOption("--env-file", createEnvFile());
     }
     builder
         .addGlobalOption("-f", composeFile.toString())
@@ -111,10 +104,11 @@ public class ComposeUp extends ComposeProjectGoal {
     }
   }
 
-  private void createEnvFile() throws IOException {
+  private String createEnvFile() throws IOException {
+    Path envFile = composeProject.resolve(DOT_ENV);
     try (Writer writer =
         Files.newBufferedWriter(
-            Path.of(envFile), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            envFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
       env.forEach(
           (k, v) -> {
             try {
@@ -124,10 +118,11 @@ public class ComposeUp extends ComposeProjectGoal {
             }
           });
     }
+    return envFile.toString();
   }
 
   private void createHostSourceDirs() throws IOException {
-    Path mountsFile = mountsFile();
+    Path mountsFile = composeProject.resolve(MOUNTS_YAML);
     if (Files.isReadable(mountsFile)) {
       readMounts(mountsFile).forEach(this::createSourceDirectory);
     }
@@ -154,9 +149,9 @@ public class ComposeUp extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws MojoExecutionException {
+  protected void postComposeCommand(String exitMessage) throws MojoExecutionException, IOException {
     if (exitMessage != null) {
-      saveServiceLogs();
+      saveServiceLogs(composeProject.resolve(COMPOSE_YAML));
       throw new MojoExecutionException(exitMessage);
     }
     portInfos.forEach(this::assignMavenVariable);

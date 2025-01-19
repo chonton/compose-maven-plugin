@@ -1,12 +1,10 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.IOException;
-import lombok.Getter;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Parameter;
 
 /** Execute Compose */
-@Getter
 public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   /** docker compose command line interface */

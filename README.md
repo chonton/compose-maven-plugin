@@ -30,14 +30,6 @@ supplied via the `compose` artifact saved in the maven repository.
 Plugin reports are available
 at [plugin info](https://chonton.github.io/compose-maven-plugin/plugin-info.html).
 
-### Global Configuration
-
-|   Parameter |        Default        | Description                                      |
-|------------:|:---------------------:|:-------------------------------------------------|
-|         cli |       `docker`        | Name of compose cli                              |
-| projectName | ${project.artifactId} | Name of compose application                      |
-|     timeout |          30           | Number of seconds to wait for compose completion |
-
 ## Assemble Goal
 
 The [assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) goal binds by
@@ -71,6 +63,15 @@ Example multi-artifact compose source layout
 │ │ │ └ compose.yaml
 ```
 
+### Assemble Configuration
+
+|    Parameter | Default          | Property       | Description                           |
+|-------------:|:-----------------|:---------------|:--------------------------------------|
+|       attach | true             | compose.attach | Attach compose file as build artifact |
+| dependencies |                  |                | Dependency coordinates                |
+|         skip | false            | compose.skip   | Skip execution                        |
+|       source | src/main/compose | compose.source | Location of compose files             |
+
 ## Link Goal
 
 The [link](https://chonton.github.io/compose-maven-plugin/link-mojo.html) goal binds by default to the **test** phase.
@@ -82,11 +83,18 @@ Missing dependencies or file overwrites will cause a failure. All files named `c
 `docker compose config` execution with the project-directory set to **target/compose**. The linked application file is
 saved as **target/compose/compose.yaml**.
 
-### Configuration
+### Link Configuration
 
-|    Parameter | Description                          |
-|-------------:|:-------------------------------------|
-| dependencies | List of dependency compose artifacts |
+|    Parameter | Default               | Property        | Description                                      |
+|-------------:|:----------------------|:----------------|:-------------------------------------------------|
+|       attach | true                  | compose.attach  | Attach compose file as build artifact            |
+|          cli | `docker`              | compose.cli     | Name of compose cli                              |
+| dependencies |                       |                 | Dependency coordinates                           |
+|       filter | true                  | compose.filter  | Interpolate maven properties while linking       |
+|      project | ${project.artifactId} | compose.project | Compose project name                             |
+|         skip | false                 | compose.skip    | Skip execution                                   |
+|       source | src/main/compose      | compose.source  | Location of compose files                        |
+|      timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 Dependencies may be specified in two different forms: `Group:Artifact:Version` or `Group:Artifact::Classifier:Version`.
 If using the first form, the classifier defaults to `compose`.
@@ -102,9 +110,15 @@ can then be used in interpolation by compose.
 
 ### Configuration
 
-| Parameter | Description                  |
-|----------:|:-----------------------------|
-|     alias | Map of user property aliases |
+| Parameter | Default               | Property        | Description                                      |
+|----------:|:----------------------|:----------------|:-------------------------------------------------|
+|     alias | true                  |                 | Map of user property aliases                     |
+|       cli | `docker`              | compose.cli     | Name of compose cli                              |
+|       env |                       |                 | Map of compose environment variables             |
+|      logs | target/container-logs | compose.logs    | Directory for failed container logs              |
+|   project | ${project.artifactId} | compose.project | Compose project name                             |
+|      skip | false                 | compose.skip    | Skip execution                                   |
+|   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 After user properties for ports are set, alias user properties are evaluated. For each alias, the alias value is
 interpolated. The user property named with the alias key is set to the interpolation result.
@@ -113,6 +127,16 @@ interpolated. The user property named with the alias key is set to the interpola
 
 The [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) goal binds by default to
 the **post-integration-test** phase. This goal executes `docker compose down` using **target/compose/compose.yaml**.
+
+### Configuration
+
+| Parameter | Default               | Property        | Description                                      |
+|----------:|:----------------------|:----------------|:-------------------------------------------------|
+|       cli | `docker`              | compose.cli     | Name of compose cli                              |
+|      logs | target/container-logs | compose.logs    | Directory for container logs                     |
+|   project | ${project.artifactId} | compose.project | Compose project name                             |
+|      skip | false                 | compose.skip    | Skip execution                                   |
+|   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 ### Container logs
 

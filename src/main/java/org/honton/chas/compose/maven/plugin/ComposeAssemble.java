@@ -39,7 +39,7 @@ import org.yaml.snakeyaml.Yaml;
 public class ComposeAssemble extends ComposeGoal {
 
   /** Attach compose configuration as a secondary artifact */
-  @Parameter(defaultValue = "true")
+  @Parameter(property = "compose.attach", defaultValue = "true")
   boolean attach;
 
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
@@ -49,8 +49,8 @@ public class ComposeAssemble extends ComposeGoal {
    * Directory which holds compose application configuration(s). Compose files should be in
    * subdirectories to namespace the configuration.
    */
-  @Parameter(defaultValue = "${project.basedir}/src/main/compose")
-  String composeSrc;
+  @Parameter(property = "compose.source", defaultValue = "${project.basedir}/src/main/compose")
+  String source;
 
   @Parameter(defaultValue = "${project}", required = true, readonly = true)
   MavenProject project;
@@ -73,7 +73,7 @@ public class ComposeAssemble extends ComposeGoal {
      * Directory which holds compose application configuration(s). Compose files should be in
      * subdirectories to namespace the configuration.
      */
-    Path composeSrcPath = Path.of(composeSrc);
+    Path composeSrcPath = Path.of(source);
     if (Files.isDirectory(composeSrcPath)) {
       yaml = new Yaml();
       artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
