@@ -10,8 +10,10 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
@@ -19,7 +21,6 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import lombok.SneakyThrows;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -65,6 +66,7 @@ public class ComposeAssemble extends ComposeGoal {
   private Yaml yaml;
   private Map<String, ArtifactInfo> coordinatesToInfo;
   private Map<String, String> serviceToCoordinates;
+  private final Set<String> dependencyCoordinates = new HashSet<>();
 
   protected final void doExecute() throws Exception {
     /*
@@ -79,7 +81,11 @@ public class ComposeAssemble extends ComposeGoal {
       serviceToCoordinates = new HashMap<>();
 
       if (dependencies != null) {
-        dependencies.forEach(this::addDependency);
+        for (String dependency : dependencies) {
+          if (dependencyCoordinates.add(dependency)) {
+            addDependency(dependency);
+          }
+        }
       }
 
       artifactHelper.processComposeSrc(getLog(), this::readComposeFile);
@@ -93,16 +99,18 @@ public class ComposeAssemble extends ComposeGoal {
     getLog().info("No compose files found");
   }
 
-  @SneakyThrows
-  private void addDependency(String dependency) {
+  private void addDependency(String dependency)
+      throws RepositoryException, MojoExecutionException, IOException {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     String gav = artifact.toString();
-    getLog().debug("Adding dependency " + gav);
-    addArtifact(gav, artifactHelper.fetchArtifact(artifact));
+    if (dependencyCoordinates.add(gav)) {
+      addArtifact(gav, artifactHelper.fetchArtifact(artifact));
+    }
   }
 
   private void addArtifact(String gav, File file)
       throws IOException, MojoExecutionException, RepositoryException {
+    getLog().debug("Adding dependency " + gav);
     try (JarReader jr =
         new JarReader(file) {
           @Override

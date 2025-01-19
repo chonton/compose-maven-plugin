@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -19,6 +18,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
+import lombok.SneakyThrows;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
@@ -38,6 +38,9 @@ import org.yaml.snakeyaml.Yaml;
 /** Link compose configuration into single application */
 @Mojo(name = "link", defaultPhase = LifecyclePhase.TEST, threadSafe = true)
 public class ComposeLink extends ComposeProjectGoal {
+
+  private static final String PUBLISHED = "published";
+  private static final String TARGET = "target";
 
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
@@ -62,15 +65,15 @@ public class ComposeLink extends ComposeProjectGoal {
   RepositorySystemSession repoSession;
 
   private CommandBuilder commandBuilder;
-  private Set<String> fetchedDependencies;
   private ArtifactHelper artifactHelper;
 
   private final Interpolator interpolator;
   private final Yaml yaml;
-  private final Map<String, String> extractedPaths = new HashMap<>();
+  private final Set<String> artifactCoordinates = new HashSet<>();
+  private final Set<String> dependencyCoordinates = new HashSet<>();
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
-  private final List<PortInfo> variablePorts = new ArrayList<>();
+  private final Map<String, PortInfo> variablePorts = new HashMap<>();
 
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
@@ -95,7 +98,10 @@ public class ComposeLink extends ComposeProjectGoal {
   private void addDependency(String dependency)
       throws MojoExecutionException, IOException, RepositoryException {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
-    addArtifact(artifact.toString(), artifactHelper.fetchArtifact(artifact));
+    String gav = artifact.toString();
+    if (dependencyCoordinates.add(gav)) {
+      addArtifact(gav, artifactHelper.fetchArtifact(artifact));
+    }
   }
 
   private void addArtifact(String coordinates, File file)
@@ -118,18 +124,14 @@ public class ComposeLink extends ComposeProjectGoal {
   void extractDependencies(String[] dependencies)
       throws MojoExecutionException, IOException, RepositoryException {
     for (String dependency : dependencies) {
-      if (fetchedDependencies.add(dependency)) {
-        addDependency(dependency);
-      }
+      addDependency(dependency);
     }
   }
 
   private void processArtifact(String coordinates, String name, InputStream inputStream)
-      throws MojoExecutionException, IOException {
-    String priorGav = extractedPaths.put(name, coordinates);
-    if (priorGav != null && !priorGav.equals(coordinates)) {
-      throw new MojoExecutionException(
-          name + " in " + coordinates + " was previously defined in " + priorGav);
+      throws IOException {
+    if (!artifactCoordinates.add(coordinates)) {
+      return;
     }
 
     Path dstPath = composeProject.resolve(name);
@@ -173,64 +175,112 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private void replaceVariablePorts(String serviceName, Map<String, Object> serviceDefinition) {
     if (serviceDefinition.get("ports") instanceof List<?> unTyped) {
-      List<Object> ports = (List) unTyped;
       List<Object> replacement =
-          ports.stream().map(port -> getReplacement(serviceName, port)).toList();
+          unTyped.stream().map(port -> getReplacement(serviceName, port)).toList();
       serviceDefinition.put("ports", replacement);
     }
   }
 
+  @SneakyThrows
   private Object getReplacement(String serviceName, Object port) {
     if (port instanceof String shortForm) {
       return shortFormReplacement(serviceName, shortForm);
     }
-    if (port instanceof Map<?, ?> longForm) {
+    if (port instanceof Map longForm) {
       return longFormReplacement(serviceName, longForm);
     }
     return port;
   }
 
-  private String shortFormReplacement(String serviceName, String shortForm) {
-    String[] parts = shortForm.split(":");
-    if (parts.length > 1) {
-      String host = parts[parts.length - 2];
-      if (!host.isEmpty() && !Character.isDigit(host.charAt(0))) {
-        String replacement = parts[parts.length - 1];
-        int slashIdx = replacement.indexOf('/');
-        String container = slashIdx < 0 ? replacement : replacement.substring(0, slashIdx);
-        if (container.indexOf('-') >= 0) {
-          throw new IllegalArgumentException("range not supported for variable port");
-        }
-        addVariablePort(serviceName, host, container);
-        return replacement;
-      }
+  private Object shortFormReplacement(String serviceName, String shortForm)
+      throws MojoExecutionException {
+    int hostContainerIdx = shortForm.lastIndexOf(':');
+    if (hostContainerIdx < 0) {
+      return shortForm;
     }
-    return shortForm;
-  }
 
-  private Map<?, ?> longFormReplacement(String serviceName, Map<?, ?> longForm) {
-    if (longForm.get("published") instanceof String published
-        && !published.isEmpty()
-        && !Character.isDigit(published.charAt(0))) {
-      Object container = longForm.get("target");
-      if (container != null) {
-        addVariablePort(serviceName, published, container.toString());
-        longForm.remove("published");
-      }
+    Map<String, Object> longForm = new HashMap<>();
+
+    String host = shortForm.substring(0, hostContainerIdx);
+    String property;
+    int ipHostIdx = host.lastIndexOf(':');
+    if (ipHostIdx < 0) {
+      property = host;
+    } else {
+      property = host.substring(ipHostIdx + 1);
+      longForm.put("host_ip", host.substring(0, ipHostIdx));
+    }
+    if (property.isEmpty() || Character.isDigit(property.charAt(0))) {
+      return shortForm;
+    }
+
+    String container = shortForm.substring(hostContainerIdx + 1);
+    int containerProtocolIdx = container.lastIndexOf('/');
+    String target;
+    if (containerProtocolIdx < 0) {
+      target = container;
+    } else {
+      target = container.substring(0, containerProtocolIdx);
+      longForm.put("protocol", container.substring(containerProtocolIdx + 1));
+    }
+    longForm.put(TARGET, Integer.valueOf(target));
+
+    if (container.indexOf('-') >= 0) {
+      throw new MojoExecutionException("range not supported for variable port");
+    }
+
+    String env = addVariablePort(serviceName, property, container);
+    if (env != null) {
+      longForm.put(PUBLISHED, env);
     }
     return longForm;
   }
 
-  private void addVariablePort(String serviceName, String property, String container) {
+  private Map<String, Object> longFormReplacement(String serviceName, Map<String, Object> longForm)
+      throws MojoExecutionException {
+
+    if (longForm.get(TARGET) instanceof Integer target) {
+      if (longForm.get(PUBLISHED) instanceof String property
+          && !property.isEmpty()
+          && !Character.isDigit(property.charAt(0))) {
+        String env = addVariablePort(serviceName, property, target.toString());
+        if (env == null) {
+          longForm.remove(PUBLISHED);
+        } else {
+          longForm.put(PUBLISHED, env);
+        }
+      }
+    } else {
+      throw new MojoExecutionException("missing port target for service " + serviceName);
+    }
+    return longForm;
+  }
+
+  private String addVariablePort(String serviceName, String property, String container)
+      throws MojoExecutionException {
+    String key;
+    String env;
     PortInfo variablePort = new PortInfo().setService(serviceName).setContainer(container);
     if (property.startsWith("${") && property.endsWith("}")) {
-      String key = property.substring(2, property.length() - 1);
-      String env = key.toUpperCase(Locale.ROOT).replace('.', '_');
-      variablePort.setProperty(key).setEnv(env);
+      key = property.substring(2, property.length() - 1);
+      env = key.toUpperCase(Locale.ROOT).replace('.', '_');
+      variablePort.setEnv(env);
     } else {
-      variablePort.setProperty(property);
+      key = property;
+      env = null;
     }
-    variablePorts.add(variablePort);
+    variablePort.setProperty(key);
+    PortInfo prior = variablePorts.put(key, variablePort);
+    if (prior != null) {
+      throw new MojoExecutionException(
+          "property "
+              + key
+              + " for service "
+              + variablePort.getService()
+              + " was previously defined in "
+              + prior.getService());
+    }
+    return env != null ? "${" + env + "}" : null;
   }
 
   private void collectHostMounts(String serviceName, Map<String, Object> model) {
@@ -273,7 +323,6 @@ public class ComposeLink extends ComposeProjectGoal {
     this.commandBuilder = builder;
     Path composeSrcPath = Path.of(composeSrc);
     artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
-    fetchedDependencies = new HashSet<>();
 
     if (dependencies != null) {
       for (String dependency : dependencies) {
@@ -297,7 +346,7 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   private void processLocalArtifact(String classifier, String namespace, Path composeYaml)
-      throws IOException, MojoExecutionException {
+      throws IOException {
     String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
     String namespacedPath = ArtifactHelper.namespacedPath(namespace, composeYaml);
     processArtifact(coordinates, namespacedPath, Files.newInputStream(composeYaml));
@@ -321,7 +370,7 @@ public class ComposeLink extends ComposeProjectGoal {
       Files.deleteIfExists(portsFile);
     } else {
       try (BufferedWriter bw = bufferedWriter(portsFile)) {
-        yaml.dump(variablePorts.stream().map(PortInfo::toMap).toList(), bw);
+        yaml.dump(variablePorts.values().stream().map(PortInfo::toMap).toList(), bw);
       }
     }
   }
