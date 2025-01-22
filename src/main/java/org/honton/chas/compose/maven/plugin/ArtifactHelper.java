@@ -37,13 +37,8 @@ class ArtifactHelper {
   static DefaultArtifact composeArtifact(String dependency) {
     DefaultArtifact artifact = new DefaultArtifact(dependency);
     if ("".equals(artifact.getClassifier())) {
-      artifact =
-          new DefaultArtifact(
-              artifact.getGroupId(),
-              artifact.getArtifactId(),
-              "compose",
-              "jar",
-              artifact.getVersion());
+      return new DefaultArtifact(
+          artifact.getGroupId(), artifact.getArtifactId(), "compose", "jar", artifact.getVersion());
     }
     return artifact;
   }
@@ -104,7 +99,7 @@ class ArtifactHelper {
     return project.getGroupId()
         + ':'
         + project.getArtifactId()
-        + "::"
+        + ":jar:"
         + classifier
         + ':'
         + project.getVersion();

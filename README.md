@@ -155,7 +155,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.5</version>
+        <version>0.0.6</version>
       </plugin>
     </plugins>
   </pluginManagement>

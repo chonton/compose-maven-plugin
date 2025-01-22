@@ -100,6 +100,7 @@ public class ComposeLink extends ComposeProjectGoal {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     String gav = artifact.toString();
     if (dependencyCoordinates.add(gav)) {
+      getLog().debug("adding dependency " + gav);
       addArtifact(gav, artifactHelper.fetchArtifact(artifact));
     }
   }
@@ -133,6 +134,7 @@ public class ComposeLink extends ComposeProjectGoal {
     if (!artifactCoordinates.add(coordinates)) {
       return;
     }
+    getLog().debug("processing artifact: " + coordinates);
 
     Path dstPath = composeProject.resolve(name);
     Path parent = dstPath.getParent();

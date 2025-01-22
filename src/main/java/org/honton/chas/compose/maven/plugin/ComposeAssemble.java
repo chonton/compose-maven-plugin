@@ -110,7 +110,7 @@ public class ComposeAssemble extends ComposeGoal {
 
   private void addArtifact(String gav, File file)
       throws IOException, MojoExecutionException, RepositoryException {
-    getLog().debug("Adding dependency " + gav);
+    getLog().debug("adding dependency " + gav);
     try (JarReader jr =
         new JarReader(file) {
           @Override
@@ -186,7 +186,7 @@ public class ComposeAssemble extends ComposeGoal {
       jarArtifact(info, destination, namespace, composeYaml.getParent());
     }
     if (attach) {
-      getLog().debug("Attaching " + destPath);
+      getLog().debug("attaching " + destPath);
       projectHelper.attachArtifact(project, "jar", classifier, destPath.toFile());
     }
   }
