@@ -21,6 +21,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import lombok.SneakyThrows;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -68,6 +69,7 @@ public class ComposeAssemble extends ComposeGoal {
   private Map<String, String> serviceToCoordinates;
   private final Set<String> dependencyCoordinates = new HashSet<>();
 
+  @SneakyThrows
   protected final void doExecute() throws Exception {
     /*
      * Directory which holds compose application configuration(s). Compose files should be in
@@ -80,13 +82,7 @@ public class ComposeAssemble extends ComposeGoal {
       coordinatesToInfo = new HashMap<>();
       serviceToCoordinates = new HashMap<>();
 
-      if (dependencies != null) {
-        for (String dependency : dependencies) {
-          if (dependencyCoordinates.add(dependency)) {
-            addDependency(dependency);
-          }
-        }
-      }
+      ArtifactHelper.toStream(dependencies).forEach(this::addDependency);
 
       artifactHelper.processComposeSrc(getLog(), this::readComposeFile);
       artifactHelper.processComposeSrc(getLog(), this::writeComposeJar);
@@ -99,8 +95,8 @@ public class ComposeAssemble extends ComposeGoal {
     getLog().info("No compose files found");
   }
 
-  private void addDependency(String dependency)
-      throws RepositoryException, MojoExecutionException, IOException {
+  @SneakyThrows
+  private void addDependency(String dependency) {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     String gav = artifact.toString();
     if (dependencyCoordinates.add(gav)) {

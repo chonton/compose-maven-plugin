@@ -97,7 +97,8 @@ saved as **target/compose/compose.yaml**.
 |      timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 Dependencies may be specified in two different forms: `Group:Artifact:Version` or `Group:Artifact::Classifier:Version`.
-If using the first form, the classifier defaults to `compose`.
+If using the first form, the classifier defaults to `compose`. Dependencies is a list of strings, each element may be
+contain multiple dependencies separated by commas or whitespace.
 
 ## Up Goal
 
@@ -155,7 +156,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.6</version>
+        <version>0.0.7</version>
       </plugin>
     </plugins>
   </pluginManagement>

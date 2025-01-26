@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,18 @@ class ArtifactHelper {
 
   static String namespacedPath(String namespace, Path path) {
     return namespace + '/' + path.getFileName();
+  }
+
+  static Stream<String> toStream(Collection<String> collection) {
+    return collection == null
+        ? Stream.of()
+        : collection.stream().flatMap(ArtifactHelper::splitAndTrim);
+  }
+
+  private static Stream<String> splitAndTrim(String element) {
+    return element == null
+        ? Stream.of()
+        : Stream.of(element.split("[,\\s]+")).map(String::trim).filter(i -> !i.isEmpty());
   }
 
   /**

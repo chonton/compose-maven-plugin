@@ -95,8 +95,8 @@ public class ComposeLink extends ComposeProjectGoal {
     return "config";
   }
 
-  private void addDependency(String dependency)
-      throws MojoExecutionException, IOException, RepositoryException {
+  @SneakyThrows
+  private void addDependency(String dependency) {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
     String gav = artifact.toString();
     if (dependencyCoordinates.add(gav)) {
@@ -320,17 +320,14 @@ public class ComposeLink extends ComposeProjectGoal {
     return filter ? new InterpolatorFilterReader(reader, interpolator) : reader;
   }
 
+  @SneakyThrows
   @Override
   protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
     this.commandBuilder = builder;
     Path composeSrcPath = Path.of(source);
     artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
-    if (dependencies != null) {
-      for (String dependency : dependencies) {
-        addDependency(dependency);
-      }
-    }
+    ArtifactHelper.toStream(dependencies).forEach(this::addDependency);
 
     if (Files.isDirectory(composeSrcPath)) {
       artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact);
