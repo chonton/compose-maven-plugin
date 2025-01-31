@@ -28,8 +28,6 @@ import org.yaml.snakeyaml.Yaml;
 @Mojo(name = "up", defaultPhase = LifecyclePhase.PRE_INTEGRATION_TEST, threadSafe = true)
 public class ComposeUp extends ComposeLogsGoal {
 
-  private static final String ALL_INTERFACES = "0.0.0.0:";
-  private static final int ALL_INTERFACES_LEN = ALL_INTERFACES.length();
   private final Interpolator interpolator;
 
   /** Environment variables to apply */
@@ -174,9 +172,7 @@ public class ComposeUp extends ComposeLogsGoal {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
     String port = new ExecHelper(this.getLog()).outputAsString(timeout, builder).strip();
-    if (port.startsWith(ALL_INTERFACES)) {
-      port = port.substring(ALL_INTERFACES_LEN);
-    }
+    port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     userProperties.put(portInfo.getProperty(), port);
   }

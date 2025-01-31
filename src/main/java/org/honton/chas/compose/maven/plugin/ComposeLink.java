@@ -39,8 +39,16 @@ import org.yaml.snakeyaml.Yaml;
 @Mojo(name = "link", defaultPhase = LifecyclePhase.TEST, threadSafe = true)
 public class ComposeLink extends ComposeProjectGoal {
 
+  public static final String HOST_IP = "host_ip";
   private static final String PUBLISHED = "published";
   private static final String TARGET = "target";
+  private final Interpolator interpolator;
+  private final Yaml yaml;
+  private final Set<String> artifactCoordinates = new HashSet<>();
+  private final Set<String> dependencyCoordinates = new HashSet<>();
+  private final Set<Path> createdDirs = new HashSet<>();
+  private final Set<String> hostMounts = new HashSet<>();
+  private final Map<String, PortInfo> variablePorts = new HashMap<>();
 
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
@@ -67,14 +75,6 @@ public class ComposeLink extends ComposeProjectGoal {
   private CommandBuilder commandBuilder;
   private ArtifactHelper artifactHelper;
 
-  private final Interpolator interpolator;
-  private final Yaml yaml;
-  private final Set<String> artifactCoordinates = new HashSet<>();
-  private final Set<String> dependencyCoordinates = new HashSet<>();
-  private final Set<Path> createdDirs = new HashSet<>();
-  private final Set<String> hostMounts = new HashSet<>();
-  private final Map<String, PortInfo> variablePorts = new HashMap<>();
-
   @Inject
   public ComposeLink(MavenSession session, MavenProject project) {
     interpolator = InterpolatorFactory.createInterpolator(session, project);
@@ -88,6 +88,10 @@ public class ComposeLink extends ComposeProjectGoal {
   private static BufferedWriter bufferedWriter(Path dstPath) throws IOException {
     return Files.newBufferedWriter(
         dstPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+  }
+
+  private static boolean isIpV6(String hostIp) {
+    return hostIp.indexOf(':') >= 0;
   }
 
   @Override
@@ -208,9 +212,14 @@ public class ComposeLink extends ComposeProjectGoal {
     int ipHostIdx = host.lastIndexOf(':');
     if (ipHostIdx < 0) {
       property = host;
+      longForm.put(HOST_IP, "0.0.0.0");
     } else {
       property = host.substring(ipHostIdx + 1);
-      longForm.put("host_ip", host.substring(0, ipHostIdx));
+      String hostIp = host.substring(0, ipHostIdx);
+      if (isIpV6(hostIp)) {
+        throw new MojoExecutionException("port variables not supported for IPv6");
+      }
+      longForm.put(HOST_IP, hostIp);
     }
     if (property.isEmpty() || Character.isDigit(property.charAt(0))) {
       return shortForm;
@@ -245,6 +254,9 @@ public class ComposeLink extends ComposeProjectGoal {
       if (longForm.get(PUBLISHED) instanceof String property
           && !property.isEmpty()
           && !Character.isDigit(property.charAt(0))) {
+        if (longForm.get(HOST_IP) instanceof String hostIp && isIpV6(hostIp)) {
+          throw new MojoExecutionException("port variables not supported for IPv6");
+        }
         String env = addVariablePort(serviceName, property, target.toString());
         if (env == null) {
           longForm.remove(PUBLISHED);
