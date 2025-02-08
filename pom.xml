@@ -1,19 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.honton.chas</groupId>
   <artifactId>compose-maven-plugin</artifactId>
-  <version>0.0.8</version>
+  <version>0.0.9</version>
   <packaging>maven-plugin</packaging>
 
   <name>Compose Maven Plugin</name>
-  <description>
-    Use Compose to run docker/podman images from Maven. Store compose configuration in Maven
-    repository for use by downstream image consumers.
-  </description>
+  <description>Use Compose to run docker/podman images from Maven. Store compose configuration in Maven
+    repository for use by downstream image consumers.</description>
 
   <url>https://github.com/chonton/${project.artifactId}</url>
   <inceptionYear>2024</inceptionYear>
@@ -65,6 +61,7 @@
 
   <properties>
     <git-code-format-maven-plugin.version>5.3</git-code-format-maven-plugin.version>
+    <junit.version>5.10.1</junit.version>
     <lombok.version>1.18.32</lombok.version>
 
     <maven.compiler.release>17</maven.compiler.release>
@@ -125,6 +122,20 @@
       <groupId>org.eclipse.aether</groupId>
       <artifactId>aether-api</artifactId>
       <version>1.1.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
     </dependency>
 
     <dependency>
@@ -281,7 +292,7 @@
                 <requireMavenVersion>
                   <version>[${maven.version},)</version>
                 </requireMavenVersion>
-                <dependencyConvergence></dependencyConvergence>
+                <dependencyConvergence/>
               </rules>
             </configuration>
           </execution>

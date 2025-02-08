@@ -32,6 +32,8 @@ import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
+import org.honton.chas.compose.maven.plugin.ArtifactHelper.Coordinates;
+import org.honton.chas.compose.maven.plugin.ArtifactHelper.InputStreamSupplier;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
@@ -44,8 +46,6 @@ public class ComposeLink extends ComposeProjectGoal {
   private static final String TARGET = "target";
   private final Interpolator interpolator;
   private final Yaml yaml;
-  private final Set<String> artifactCoordinates = new HashSet<>();
-  private final Set<String> dependencyCoordinates = new HashSet<>();
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
   private final Map<String, PortInfo> variablePorts = new HashMap<>();
@@ -99,18 +99,29 @@ public class ComposeLink extends ComposeProjectGoal {
     return "config";
   }
 
-  @SneakyThrows
-  private void addDependency(String dependency) {
+  private void addDependency(String dependency)
+      throws MojoExecutionException, RepositoryException, IOException {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
-    String gav = artifact.toString();
-    if (dependencyCoordinates.add(gav)) {
-      getLog().debug("adding dependency " + gav);
-      addArtifact(gav, artifactHelper.fetchArtifact(artifact));
-    }
+    artifactHelper.addArtifact(artifact, this::addArtifact);
   }
 
-  private void addArtifact(String coordinates, File file)
+  private void addArtifact(Coordinates nvp, File file)
       throws IOException, MojoExecutionException, RepositoryException {
+    if (nvp.prior() != null) {
+      int compare = SemVer.valueOf(nvp.version()).compareTo(SemVer.valueOf(nvp.prior()));
+      if (compare == 0) {
+        getLog().debug("Ignoring duplicate artifact " + nvp.gav());
+        return;
+      }
+      if (compare < 0) {
+        getLog().info("Ignoring lesser artifact " + nvp.gav() + ", using version " + nvp.prior());
+        return;
+      }
+      getLog().info("Replacing artifact " + nvp.gav() + " with version " + nvp.version());
+    } else {
+      getLog().debug("adding dependency " + nvp.key());
+    }
+
     try (JarReader jr =
         new JarReader(file) {
           @Override
@@ -118,7 +129,7 @@ public class ComposeLink extends ComposeProjectGoal {
             if (isManifestEntry()) {
               extractDependencies(extractMainAttributes(DEPENDENCIES));
             } else {
-              processArtifact(coordinates, getName(), getInputStream());
+              processArtifact(nvp, getName(), this::getInputStream);
             }
           }
         }) {
@@ -133,26 +144,25 @@ public class ComposeLink extends ComposeProjectGoal {
     }
   }
 
-  private void processArtifact(String coordinates, String name, InputStream inputStream)
+  private void processArtifact(Coordinates nvp, String name, InputStreamSupplier iss)
       throws IOException {
-    if (!artifactCoordinates.add(coordinates)) {
-      return;
-    }
-    getLog().debug("processing artifact: " + coordinates);
+    getLog().debug("processing artifact: " + nvp.gav());
 
     Path dstPath = composeProject.resolve(name);
-    Path parent = dstPath.getParent();
-    if (createdDirs.add(parent)) {
-      Files.createDirectories(parent);
+    if (nvp.prior() == null) {
+      Path parent = dstPath.getParent();
+      if (createdDirs.add(parent)) {
+        Files.createDirectories(parent);
+      }
+
+      if (name.endsWith("/compose.yaml")) {
+        commandBuilder.addGlobalOption("-f", dstPath.toString());
+      } else if (name.endsWith("/.env")) {
+        commandBuilder.addGlobalOption("--env-file", dstPath.toString());
+      }
     }
 
-    if (name.endsWith("/compose.yaml")) {
-      commandBuilder.addGlobalOption("-f", dstPath.toString());
-    } else if (name.endsWith("/.env")) {
-      commandBuilder.addGlobalOption("--env-file", dstPath.toString());
-    }
-
-    try (InputStream source = inputStream) {
+    try (InputStream source = iss.get()) {
       copyYaml(source, dstPath);
     }
   }
@@ -332,18 +342,17 @@ public class ComposeLink extends ComposeProjectGoal {
     return filter ? new InterpolatorFilterReader(reader, interpolator) : reader;
   }
 
-  @SneakyThrows
   @Override
-  protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
+  protected boolean addComposeOptions(CommandBuilder builder)
+      throws MojoExecutionException, RepositoryException, IOException {
     this.commandBuilder = builder;
     Path composeSrcPath = Path.of(source);
     artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
-    ArtifactHelper.toStream(dependencies).forEach(this::addDependency);
-
     if (Files.isDirectory(composeSrcPath)) {
       artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact);
     }
+    ArtifactHelper.forEach(dependencies, this::addDependency);
 
     builder
         .addGlobalOption("--project-directory", composeProject.toString())
@@ -358,9 +367,10 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private void processLocalArtifact(String classifier, String namespace, Path composeYaml)
       throws IOException {
-    String coordinates = artifactHelper.coordinatesFromClassifier(classifier);
+    String gav = artifactHelper.coordinatesFromClassifier(classifier);
     String namespacedPath = ArtifactHelper.namespacedPath(namespace, composeYaml);
-    processArtifact(coordinates, namespacedPath, Files.newInputStream(composeYaml));
+    artifactHelper.processArtifact(
+        gav, namespacedPath, () -> Files.newInputStream(composeYaml), this::processArtifact);
   }
 
   @Override

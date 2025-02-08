@@ -10,10 +10,8 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
@@ -33,6 +31,7 @@ import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
+import org.honton.chas.compose.maven.plugin.ArtifactHelper.Coordinates;
 import org.yaml.snakeyaml.Yaml;
 
 /** Assemble compose configuration and attach as secondary artifact */
@@ -62,14 +61,11 @@ public class ComposeAssemble extends ComposeGoal {
   RepositorySystemSession repoSession;
 
   @Component MavenProjectHelper projectHelper;
-
   private ArtifactHelper artifactHelper;
   private Yaml yaml;
   private Map<String, ArtifactInfo> coordinatesToInfo;
   private Map<String, String> serviceToCoordinates;
-  private final Set<String> dependencyCoordinates = new HashSet<>();
 
-  @SneakyThrows
   protected final void doExecute() throws Exception {
     /*
      * Directory which holds compose application configuration(s). Compose files should be in
@@ -82,7 +78,7 @@ public class ComposeAssemble extends ComposeGoal {
       coordinatesToInfo = new HashMap<>();
       serviceToCoordinates = new HashMap<>();
 
-      ArtifactHelper.toStream(dependencies).forEach(this::addDependency);
+      ArtifactHelper.forEach(dependencies, this::addDependency);
 
       artifactHelper.processComposeSrc(getLog(), this::readComposeFile);
       artifactHelper.processComposeSrc(getLog(), this::writeComposeJar);
@@ -98,15 +94,15 @@ public class ComposeAssemble extends ComposeGoal {
   @SneakyThrows
   private void addDependency(String dependency) {
     DefaultArtifact artifact = ArtifactHelper.composeArtifact(dependency);
-    String gav = artifact.toString();
-    if (dependencyCoordinates.add(gav)) {
-      addArtifact(gav, artifactHelper.fetchArtifact(artifact));
-    }
+    artifactHelper.addArtifact(artifact, this::addArtifact);
   }
 
-  private void addArtifact(String gav, File file)
+  private void addArtifact(Coordinates nvp, File file)
       throws IOException, MojoExecutionException, RepositoryException {
-    getLog().debug("adding dependency " + gav);
+    if (nvp.prior() != null) {
+      throw new MojoExecutionException(nvp.gav() + " previously had version " + nvp.prior());
+    }
+    getLog().debug("adding dependency " + nvp.key());
     try (JarReader jr =
         new JarReader(file) {
           @Override
@@ -114,7 +110,7 @@ public class ComposeAssemble extends ComposeGoal {
             if (isManifestEntry()) {
               String[] services = extractMainAttributes(JarReader.SERVICES);
               for (String service : services) {
-                serviceToCoordinates.put(service, gav);
+                serviceToCoordinates.put(service, nvp.gav());
               }
             }
           }
@@ -156,8 +152,10 @@ public class ComposeAssemble extends ComposeGoal {
         }
 
         List<String> dependsOn = new ArrayList<>();
-        if (service.get("depends_on") instanceof List<?> serviceDependsOn) {
-          dependsOn.addAll((Collection<? extends String>) serviceDependsOn);
+        if (service.get("depends_on") instanceof List<?> dependsOnList) {
+          dependsOn.addAll((Collection<? extends String>) dependsOnList);
+        } else if (service.get("depends_on") instanceof Map<?, ?> dependsOnMap) {
+          dependsOn.addAll((Collection<? extends String>) dependsOnMap.keySet());
         }
         if (service.get("extends") instanceof Map<?, ?> serviceExtends
             && serviceExtends.get("service") instanceof String dependentService) {

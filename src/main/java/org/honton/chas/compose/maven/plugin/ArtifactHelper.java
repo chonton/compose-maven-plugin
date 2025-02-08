@@ -2,17 +2,22 @@ package org.honton.chas.compose.maven.plugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
+import org.eclipse.aether.RepositoryException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
@@ -27,6 +32,7 @@ class ArtifactHelper {
   private final Path composeSrc;
   private final RepositorySystem repoSystem;
   private final RepositorySystemSession repoSession;
+  private final Map<String, String> artifactCoordinates = new HashMap<>();
 
   static Optional<Path> findComposePath(Path directory) {
     return Stream.of("compose.yaml", "compose.yml", "compose.json")
@@ -48,10 +54,12 @@ class ArtifactHelper {
     return namespace + '/' + path.getFileName();
   }
 
-  static Stream<String> toStream(Collection<String> collection) {
-    return collection == null
-        ? Stream.of()
-        : collection.stream().flatMap(ArtifactHelper::splitAndTrim);
+  static void forEach(Collection<String> collection, DependencyConsumer consumer)
+      throws MojoExecutionException, RepositoryException, IOException {
+    if (collection != null) {
+      SneakyDependencyConsumer sneaky = new SneakyDependencyConsumer(consumer);
+      collection.stream().flatMap(ArtifactHelper::splitAndTrim).forEach(sneaky);
+    }
   }
 
   private static Stream<String> splitAndTrim(String element) {
@@ -80,14 +88,7 @@ class ArtifactHelper {
   }
 
   void processComposeSrc(Log log, PathConsumer pathConsumer) throws IOException {
-    SneakyThrowsConsumer consumer =
-        new SneakyThrowsConsumer() {
-          @SneakyThrows
-          @Override
-          public void process(String classifier, String namespace, Path composeYaml) {
-            pathConsumer.process(classifier, namespace, composeYaml);
-          }
-        };
+    SneakyPathConsumer consumer = new SneakyPathConsumer(pathConsumer);
 
     // process src/compose
     log.debug("processing " + composeSrc);
@@ -123,14 +124,77 @@ class ArtifactHelper {
         .resolve(project.getArtifactId() + '-' + project.getVersion() + '-' + classifier + ".jar");
   }
 
+  public void addArtifact(Artifact artifact, AddArtifact handle)
+      throws IOException, MojoExecutionException, RepositoryException {
+    handle.addArtifact(lookup(artifact.toString()), fetchArtifact(artifact));
+  }
+
+  public void processArtifact(
+      String gav, String name, InputStreamSupplier iss, ProcessArtifact handle) throws IOException {
+    handle.processArtifact(lookup(gav), name, iss);
+  }
+
+  Coordinates lookup(String gav) {
+    int colonIdx = gav.lastIndexOf(':');
+    String key = gav.substring(0, colonIdx);
+    String version = gav.substring(colonIdx + 1);
+    return new Coordinates(gav, key, version, artifactCoordinates.put(key, version));
+  }
+
+  public record Coordinates(String gav, String key, String version, String prior) {}
+
+  @FunctionalInterface
+  public interface InputStreamSupplier {
+    InputStream get() throws IOException;
+  }
+
+  @FunctionalInterface
+  public interface ProcessArtifact {
+    void processArtifact(Coordinates nvp, String name, InputStreamSupplier is) throws IOException;
+  }
+
+  @FunctionalInterface
+  public interface AddArtifact {
+
+    void addArtifact(Coordinates nvp, File file)
+        throws IOException, MojoExecutionException, RepositoryException;
+  }
+
+  @FunctionalInterface
+  public interface DependencyConsumer {
+
+    void addDependency(String dependency)
+        throws IOException, MojoExecutionException, RepositoryException;
+  }
+
   @FunctionalInterface
   interface PathConsumer {
+
     void process(String classifier, String namespace, Path composeYaml)
         throws IOException, MojoExecutionException;
   }
 
-  @FunctionalInterface
-  interface SneakyThrowsConsumer {
-    void process(String classifier, String namespace, Path composeYaml);
+  @RequiredArgsConstructor
+  private static class SneakyDependencyConsumer implements Consumer<String> {
+
+    private final DependencyConsumer dependencyConsumer;
+
+    @Override
+    @SneakyThrows
+    public void accept(String dependency) {
+      dependencyConsumer.addDependency(dependency);
+    }
+  }
+
+  @RequiredArgsConstructor
+  private static class SneakyPathConsumer implements PathConsumer {
+
+    private final PathConsumer pathConsumer;
+
+    @SneakyThrows
+    @Override
+    public void process(String classifier, String namespace, Path composeYaml) {
+      pathConsumer.process(classifier, namespace, composeYaml);
+    }
   }
 }
