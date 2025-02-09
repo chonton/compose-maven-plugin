@@ -139,7 +139,7 @@ public class ComposeAssemble extends ComposeGoal {
       if (entries.getKey() instanceof String serviceName
           && entries.getValue() instanceof Map<?, ?> service) {
 
-        if (!service.containsKey("image")) {
+        if (!service.containsKey("image") && !service.containsKey("extends")) {
           // only services with image defined are considered
           // otherwise the service definition is going to augment the primary definition
           continue;
