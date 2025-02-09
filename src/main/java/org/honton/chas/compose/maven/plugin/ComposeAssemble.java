@@ -139,6 +139,12 @@ public class ComposeAssemble extends ComposeGoal {
       if (entries.getKey() instanceof String serviceName
           && entries.getValue() instanceof Map<?, ?> service) {
 
+        if (!service.containsKey("image")) {
+          // only services with image defined are considered
+          // otherwise the service definition is going to augment the primary definition
+          continue;
+        }
+
         String priorCoordinates = serviceToCoordinates.put(serviceName, coordinates);
         if (priorCoordinates != null) {
           getLog()
