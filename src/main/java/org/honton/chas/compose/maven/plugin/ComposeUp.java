@@ -1,5 +1,6 @@
 package org.honton.chas.compose.maven.plugin;
 
+import com.sun.security.auth.module.UnixSystem;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -70,8 +71,12 @@ public class ComposeUp extends ComposeLogsGoal {
     portInfos = Files.isReadable(portsFile) ? readPorts(portsFile) : List.of();
     allocatePorts();
 
-    if (env != null && !env.isEmpty()) {
-      builder.addGlobalOption("--env-file", createEnvFile());
+    Map<String, String> allEnv = getUnixEnv();
+    if (env != null) {
+      allEnv.putAll(env);
+    }
+    if (!allEnv.isEmpty()) {
+      builder.addGlobalOption("--env-file", createEnvFile(allEnv));
     }
     builder
         .addGlobalOption("-f", composeFile.toString())
@@ -82,6 +87,18 @@ public class ComposeUp extends ComposeLogsGoal {
         .addOption("--wait")
         .addOption("--wait-timeout", Integer.toString(timeout));
     return true;
+  }
+
+  private Map<String, String> getUnixEnv() {
+    Map<String, String> unixEnv = new HashMap<>();
+    try {
+      final UnixSystem system = new UnixSystem();
+      unixEnv.put("UID", Long.toString(system.getUid()));
+      unixEnv.put("GID", Long.toString(system.getGid()));
+    } catch (RuntimeException e) {
+      getLog().debug("Failed to retrieve unix system properties", e);
+    }
+    return unixEnv;
   }
 
   private void allocatePorts() throws IOException {
@@ -102,12 +119,12 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private String createEnvFile() throws IOException {
+  private String createEnvFile(Map<String, String> allEnv) throws IOException {
     Path envFile = composeProject.resolve(DOT_ENV);
     try (Writer writer =
         Files.newBufferedWriter(
             envFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-      env.forEach(
+      allEnv.forEach(
           (k, v) -> {
             try {
               writer.append(k).append('=').append(v).append(System.lineSeparator());

@@ -17,7 +17,8 @@ maven project that builds an image can also supply its portion of a compose appl
 Downstream services do not need to know the configuration of its dependencies; the configuration is
 supplied via the `compose` artifact saved in the maven repository.
 
-- Build your images using [docker-maven-plugin](https://dmp.fabric8.io/),
+- Build your images using [buildx-maven-plugin](https://github.com/chonton/buildx-maven-plugin),
+  [docker-maven-plugin](https://dmp.fabric8.io/),
   [jib](https://github.com/GoogleContainerTools/jib/tree/master/jib-maven-plugin), or
   [buildpacks](https://github.com/paketo-buildpacks/maven)
 - Deploy compose application and capture host port assignments during **pre-integration-test** phase.
@@ -97,7 +98,7 @@ saved as **target/compose/compose.yaml**.
 |      timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 Dependencies may be specified in two different forms: `Group:Artifact:Version` or `Group:Artifact::Classifier:Version`.
-If using the first form, the classifier defaults to `compose`. Dependencies is a list of strings, each element may be
+If using the first form, the classifier defaults to `compose`. Dependencies is a list of strings, each element may
 contain multiple dependencies separated by commas or whitespace.
 
 ## Up Goal
@@ -107,8 +108,11 @@ The [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) goal binds
 `published` field of any [service port](https://docs.docker.com/compose/compose-file/05-services/#ports) is defined with
 a non-numeric name, a maven user property of that name will be set with the assigned port. If the `published` field is
 a value of form `${property}`, then a port is allocated, and an environment variable is added to the `.env` file which
-can then be used in interpolation by compose. Setting of maven variables is only supported with IPv4 addresses, as
-compose occasionally will confuse the host port for different container IPv4 and IPv6 ports.
+can then be used in interpolation by compose. Only IPv4 addresses will be set in maven variables, as compose
+occasionally will confuse the host port for different container IPv4 and IPv6 ports.
+
+For unix like systems, two bonus environment variables will be set: UID, the numeric user id of the current user and
+GID, the numeric group id of the current user.
 
 ### Configuration
 
