@@ -296,6 +296,9 @@ public class ComposeLink extends ComposeProjectGoal {
     variablePort.setProperty(key);
     PortInfo prior = variablePorts.put(key, variablePort);
     if (prior != null) {
+      if (prior.equals(variablePort)) {
+        return null;
+      }
       throw new MojoExecutionException(
           "property "
               + key

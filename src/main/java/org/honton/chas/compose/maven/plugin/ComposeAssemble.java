@@ -137,16 +137,16 @@ public class ComposeAssemble extends ComposeGoal {
     List<ServiceInfo> serviceInfos = new ArrayList<>();
     for (Map.Entry<?, ?> entries : services.entrySet()) {
       if (entries.getKey() instanceof String serviceName
-          && entries.getValue() instanceof Map<?, ?> service) {
+          && entries.getValue() instanceof Map<?, ?> service
+          && (service.containsKey("image") || service.containsKey("extends"))) {
 
-        if (!service.containsKey("image") && !service.containsKey("extends")) {
-          // only services with image defined are considered
-          // otherwise the service definition is going to augment the primary definition
-          continue;
-        }
-
+        // only services with image defined are considered
+        // otherwise the service definition is going to augment the primary definition
         String priorCoordinates = serviceToCoordinates.put(serviceName, coordinates);
         if (priorCoordinates != null) {
+          if (priorCoordinates.equals(coordinates)) {
+            continue;
+          }
           getLog()
               .error(
                   "Service "
