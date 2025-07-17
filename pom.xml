@@ -42,7 +42,7 @@
 
   <properties>
     <git-code-format-maven-plugin.version>5.3</git-code-format-maven-plugin.version>
-    <javadoc-plugin.version>3.5.0</javadoc-plugin.version>
+    <javadoc-plugin.version>3.11.2</javadoc-plugin.version>
     <junit.version>5.10.1</junit.version>
     <lombok.version>1.18.32</lombok.version>
 
@@ -411,19 +411,6 @@
     <plugins>
 
       <plugin>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <version>${javadoc-plugin.version}</version>
-        <reportSets>
-          <reportSet>
-            <id>default</id>
-            <reports>
-              <report>javadoc</report>
-            </reports>
-          </reportSet>
-        </reportSets>
-      </plugin>
-
-      <plugin>
         <artifactId>maven-plugin-report-plugin</artifactId>
         <version>3.9.0</version>
         <configuration>
@@ -483,6 +470,9 @@
                 <goals>
                   <goal>jar</goal>
                 </goals>
+                <configuration>
+                  <offline>true</offline>
+                </configuration>
               </execution>
             </executions>
           </plugin>
