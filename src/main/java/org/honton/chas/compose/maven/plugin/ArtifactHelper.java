@@ -68,6 +68,29 @@ class ArtifactHelper {
         : Stream.of(element.split("[,\\s]+")).map(String::trim).filter(i -> !i.isEmpty());
   }
 
+  private static void processComposeAndOverride(
+      Log log,
+      Path dir,
+      SneakyPathConsumer consumer,
+      String classifier,
+      String namespace,
+      boolean processOverride) {
+    log.debug("processing " + dir);
+    Optional<Path> composeYaml = findComposePath(dir);
+    composeYaml.ifPresent(
+        path -> {
+          consumer.process(classifier, namespace, path);
+          if (processOverride) {
+            Path override =
+                path.resolveSibling(
+                    path.getFileName().toString().replace("compose.", "compose-override."));
+            if (Files.isReadable(override)) {
+              consumer.process(classifier, namespace, override);
+            }
+          }
+        });
+  }
+
   /**
    * Fetch the artifact and return the local location
    *
@@ -87,24 +110,19 @@ class ArtifactHelper {
     return local.getFile();
   }
 
-  void processComposeSrc(Log log, PathConsumer pathConsumer) throws IOException {
+  void processComposeSrc(Log log, PathConsumer pathConsumer, boolean processOverride)
+      throws IOException {
     SneakyPathConsumer consumer = new SneakyPathConsumer(pathConsumer);
 
     // process src/compose
-    log.debug("processing " + composeSrc);
-    Optional<Path> composeYaml = findComposePath(composeSrc);
-    composeYaml.ifPresent(path -> consumer.process("compose", project.getArtifactId(), path));
+    processComposeAndOverride(
+        log, composeSrc, consumer, "compose", project.getArtifactId(), processOverride);
 
     // process directories src/compose/_classifier_
     try (DirectoryStream<Path> files = Files.newDirectoryStream(composeSrc, Files::isReadable)) {
       for (Path dir : files) {
-        log.debug("processing " + dir);
-        composeYaml = findComposePath(dir);
-        composeYaml.ifPresent(
-            path -> {
-              String classifier = dir.getFileName().toString();
-              consumer.process(classifier, classifier, path);
-            });
+        String classifier = dir.getFileName().toString();
+        processComposeAndOverride(log, dir, consumer, classifier, classifier, processOverride);
       }
     }
   }
@@ -141,8 +159,6 @@ class ArtifactHelper {
     return new Coordinates(gav, key, version, artifactCoordinates.put(key, version));
   }
 
-  public record Coordinates(String gav, String key, String version, String prior) {}
-
   @FunctionalInterface
   public interface InputStreamSupplier {
     InputStream get() throws IOException;
@@ -173,6 +189,8 @@ class ArtifactHelper {
     void process(String classifier, String namespace, Path composeYaml)
         throws IOException, MojoExecutionException;
   }
+
+  public record Coordinates(String gav, String key, String version, String prior) {}
 
   @RequiredArgsConstructor
   private static class SneakyDependencyConsumer implements Consumer<String> {

@@ -33,13 +33,15 @@ at [plugin info](https://chonton.github.io/compose-maven-plugin/plugin-info.html
 
 ## Assemble Goal
 
-The [assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) goal binds by
-default to the **compile** phase. This goal assembles a jar from the contents of directories in **src/main/compose**. If
-there is a compose.yaml in **src/main/compose**, any regular files in **src/main/compose** will be added to a compose
+The [assemble](https://chonton.github.io/compose-maven-plugin/assemble-mojo.html) goal binds by default to the
+**compile** phase.
+
+This goal assembles a jar from the contents of directories in **src/main/compose**. If there is a
+`compose.\(yaml|yml|json)` in **src/main/compose**, any regular files in **src/main/compose** will be added to a compose
 jar. The jar is attached as secondary artifact with classifier `compose`.
 
-Any directories in **src/main/compose** with a compose.yaml will likewise be jarred. These jars will be attached as
-secondary artifacts with a classifier corresponding to the directory name.
+Any directories in **src/main/compose** with a `compose.\(yaml|yml|json)` will likewise be jarred. These jars will be
+attached as secondary artifacts with a classifier corresponding to the directory name.
 
 Secondary artifacts are installed during **install** phase and deployed during **deploy** phase.
 
@@ -76,13 +78,20 @@ Example multi-artifact compose source layout
 ## Link Goal
 
 The [link](https://chonton.github.io/compose-maven-plugin/link-mojo.html) goal binds by default to the **test** phase.
-Any compose dependencies will be downloaded and un-jarred into the **target/compose** directory. While un-jarring, the
-contents are interpolated using maven properties. Any `${}` expression that is not assigned is left un-interpolated,
-allowing compose runtime interpolation to expand the expression. The contents of **src/compose** is similarly processed.
 
-Missing dependencies or file overwrites will cause a failure. All files named `compose.yaml` are added to a
-`docker compose config` execution with the project-directory set to **target/compose**. The linked application file is
-saved as **target/compose/compose.yaml**.
+Any compose dependencies will be downloaded and un-jarred into the **target/compose** directory. While un-jarring, the
+contents of any file named `compose` or `compose-override` with extension `.yaml`, `.yml`, or `.json`, are interpolated
+using maven properties. Any `${}` expression that is not assigned is left un-interpolated, allowing compose runtime
+interpolation to expand the expression. The contents of **src/compose** is similarly processed.
+
+Missing dependencies or file overwrites will cause a failure.
+
+Principal file(s) from each dependency are determined by searching for a file named `compose` with an extension of
+`.yaml`, `.yml`, or `.json`. The first file found is used as the first principal. If a file named `compose-override`
+with the same extension is found, is used as the second principal.
+
+The principal file(s) from each dependency are added to a `docker compose config` execution with the project-directory
+set to **target/compose**. The linked application file is saved as **target/compose/compose.yaml**.
 
 ### Link Configuration
 
@@ -161,7 +170,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.13</version>
+        <version>0.0.14</version>
       </plugin>
     </plugins>
   </pluginManagement>

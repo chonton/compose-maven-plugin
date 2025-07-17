@@ -80,8 +80,8 @@ public class ComposeAssemble extends ComposeGoal {
 
       ArtifactHelper.forEach(dependencies, this::addDependency);
 
-      artifactHelper.processComposeSrc(getLog(), this::readComposeFile);
-      artifactHelper.processComposeSrc(getLog(), this::writeComposeJar);
+      artifactHelper.processComposeSrc(getLog(), this::readComposeFile, true);
+      artifactHelper.processComposeSrc(getLog(), this::writeComposeJar, false);
       if (!coordinatesToInfo.isEmpty()) {
         return;
       }

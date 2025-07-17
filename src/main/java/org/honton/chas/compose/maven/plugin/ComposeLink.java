@@ -46,6 +46,7 @@ public class ComposeLink extends ComposeProjectGoal {
   private static final String TARGET = "target";
   private final Interpolator interpolator;
   private final Yaml yaml;
+  private final Yaml json;
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
   private final Map<String, PortInfo> variablePorts = new HashMap<>();
@@ -79,10 +80,16 @@ public class ComposeLink extends ComposeProjectGoal {
   public ComposeLink(MavenSession session, MavenProject project) {
     interpolator = InterpolatorFactory.createInterpolator(session, project);
 
-    DumperOptions options = new DumperOptions();
-    options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-    options.setDefaultScalarStyle(DumperOptions.ScalarStyle.PLAIN);
-    yaml = new Yaml(options);
+    DumperOptions yamlOptions = new DumperOptions();
+    yamlOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+    yamlOptions.setDefaultScalarStyle(DumperOptions.ScalarStyle.PLAIN);
+    yaml = new Yaml(yamlOptions);
+
+    DumperOptions jsonOptions = new DumperOptions();
+    jsonOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.FLOW);
+    jsonOptions.setDefaultScalarStyle(DumperOptions.ScalarStyle.DOUBLE_QUOTED);
+    jsonOptions.setWidth(Integer.MAX_VALUE);
+    json = new Yaml(jsonOptions);
   }
 
   private static BufferedWriter bufferedWriter(Path dstPath) throws IOException {
@@ -92,6 +99,10 @@ public class ComposeLink extends ComposeProjectGoal {
 
   private static boolean isIpV6(String hostIp) {
     return hostIp.indexOf(':') >= 0;
+  }
+
+  private static boolean isCompose(String name) {
+    return name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json");
   }
 
   @Override
@@ -154,16 +165,16 @@ public class ComposeLink extends ComposeProjectGoal {
       if (createdDirs.add(parent)) {
         Files.createDirectories(parent);
       }
-
-      if (name.endsWith("/compose.yaml")) {
-        commandBuilder.addGlobalOption("-f", dstPath.toString());
-      } else if (name.endsWith("/.env")) {
-        commandBuilder.addGlobalOption("--env-file", dstPath.toString());
-      }
     }
 
-    try (InputStream source = iss.get()) {
-      copyYaml(source, dstPath);
+    if (isCompose(name)) {
+      commandBuilder.addGlobalOption("-f", dstPath.toString());
+    } else if (name.endsWith("/.env")) {
+      commandBuilder.addGlobalOption("--env-file", dstPath.toString());
+    }
+
+    try (InputStream stream = iss.get()) {
+      copyYaml(stream, dstPath);
     }
   }
 
@@ -171,10 +182,10 @@ public class ComposeLink extends ComposeProjectGoal {
     Reader reader = interpolateReader(source);
     try (BufferedWriter writer = bufferedWriter(dstPath)) {
       String name = dstPath.getFileName().toString();
-      if (name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json")) {
+      if (isCompose(name)) {
         Map<String, Object> model = yaml.load(reader);
         replaceVariablePorts(model);
-        yaml.dump(model, writer);
+        (name.endsWith(".json") ? json : yaml).dump(model, writer);
       } else {
         reader.transferTo(writer);
       }
@@ -352,10 +363,10 @@ public class ComposeLink extends ComposeProjectGoal {
     Path composeSrcPath = Path.of(source);
     artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
-    if (Files.isDirectory(composeSrcPath)) {
-      artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact);
-    }
     ArtifactHelper.forEach(dependencies, this::addDependency);
+    if (Files.isDirectory(composeSrcPath)) {
+      artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact, true);
+    }
 
     builder
         .addGlobalOption("--project-directory", composeProject.toString())
