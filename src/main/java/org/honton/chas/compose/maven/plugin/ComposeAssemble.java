@@ -108,7 +108,7 @@ public class ComposeAssemble extends ComposeGoal {
           @Override
           void process() throws IOException {
             if (isManifestEntry()) {
-              String[] services = extractMainAttributes(JarReader.SERVICES);
+              String[] services = extractMainAttributes(SERVICES);
               for (String service : services) {
                 serviceToCoordinates.put(service, nvp.gav());
               }

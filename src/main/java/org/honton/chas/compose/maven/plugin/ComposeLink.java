@@ -44,6 +44,10 @@ public class ComposeLink extends ComposeProjectGoal {
   public static final String HOST_IP = "host_ip";
   private static final String PUBLISHED = "published";
   private static final String TARGET = "target";
+
+  @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
+  public static final String ALL_INTERFACES = "0.0.0.0";
+
   private final Interpolator interpolator;
   private final Yaml yaml;
   private final Yaml json;
@@ -230,18 +234,19 @@ public class ComposeLink extends ComposeProjectGoal {
 
     String host = shortForm.substring(0, hostContainerIdx);
     String property;
+    String hostIp;
     int ipHostIdx = host.lastIndexOf(':');
     if (ipHostIdx < 0) {
       property = host;
-      longForm.put(HOST_IP, "0.0.0.0");
+      hostIp = ALL_INTERFACES;
     } else {
       property = host.substring(ipHostIdx + 1);
-      String hostIp = host.substring(0, ipHostIdx);
+      hostIp = host.substring(0, ipHostIdx);
       if (isIpV6(hostIp)) {
         throw new MojoExecutionException("port variables not supported for IPv6");
       }
-      longForm.put(HOST_IP, hostIp);
     }
+    longForm.put(HOST_IP, hostIp);
     if (property.isEmpty() || Character.isDigit(property.charAt(0))) {
       return shortForm;
     }
@@ -321,6 +326,7 @@ public class ComposeLink extends ComposeProjectGoal {
     return env != null ? "${" + env + "}" : null;
   }
 
+  @SuppressWarnings("PMD.UnusedFormalParameter")
   private void collectHostMounts(String serviceName, Map<String, Object> model) {
     if (model.get("volumes") instanceof List<?> volumes) {
       volumes.forEach(this::collectHostMount);

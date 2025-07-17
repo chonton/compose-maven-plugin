@@ -17,7 +17,7 @@
   <licenses>
     <license>
       <name>Apache-2.0</name>
-      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
       <distribution>repo</distribution>
     </license>
   </licenses>
@@ -42,6 +42,7 @@
 
   <properties>
     <git-code-format-maven-plugin.version>5.3</git-code-format-maven-plugin.version>
+    <javadoc-plugin.version>3.5.0</javadoc-plugin.version>
     <junit.version>5.10.1</junit.version>
     <lombok.version>1.18.32</lombok.version>
 
@@ -90,7 +91,7 @@
     <dependency>
       <groupId>org.apache.maven.plugin-tools</groupId>
       <artifactId>maven-plugin-annotations</artifactId>
-      <version>3.9.0</version>
+      <version>3.10.1</version>
     </dependency>
 
     <dependency>
@@ -194,6 +195,17 @@
         <plugin>
           <artifactId>maven-jar-plugin</artifactId>
           <version>3.4.1</version>
+        </plugin>
+
+        <plugin>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>${javadoc-plugin.version}</version>
+          <configuration>
+            <links>
+              <link>https://devdocs.io/openjdk~11/</link>
+              <link>http://commons.apache.org/fileupload/apidocs/</link>
+            </links>
+          </configuration>
         </plugin>
 
         <plugin>
@@ -332,6 +344,23 @@
         </executions>
       </plugin>
 
+      <plugin>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>3.27.0</version>
+        <configuration>
+          <compileSourceRoots>src/main/java</compileSourceRoots>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>cpd-check</goal>
+              <goal>check</goal>
+            </goals>
+            <phase>process-classes</phase>
+          </execution>
+        </executions>
+      </plugin>
+
       <!-- publish site to github,
       1. mvn [clean install] site-deploy
       -->
@@ -382,6 +411,19 @@
     <plugins>
 
       <plugin>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${javadoc-plugin.version}</version>
+        <reportSets>
+          <reportSet>
+            <id>default</id>
+            <reports>
+              <report>javadoc</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
+
+      <plugin>
         <artifactId>maven-plugin-report-plugin</artifactId>
         <version>3.9.0</version>
         <configuration>
@@ -429,6 +471,18 @@
                   <goal>sign</goal>
                 </goals>
                 <phase>verify</phase>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
               </execution>
             </executions>
           </plugin>
