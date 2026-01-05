@@ -4,7 +4,7 @@
 
   <groupId>org.honton.chas</groupId>
   <artifactId>compose-maven-plugin</artifactId>
-  <version>0.0.14</version>
+  <version>0.0.15</version>
   <packaging>maven-plugin</packaging>
 
   <name>Compose Maven Plugin</name>
@@ -57,7 +57,7 @@
     <maven.compiler.source>${maven.compiler.release}</maven.compiler.source>
     <maven.compiler.target>${maven.compiler.release}</maven.compiler.target>
 
-    <!-- use org.sonatype.plugins:nexus-staging-maven-plugin instead of org.apache.maven.plugins:maven-deploy-plugin -->
+    <!-- org.sonatype.central:central-publishing-maven-plugin instead of org.apache.maven.plugins:maven-deploy-plugin -->
     <maven.deploy.skip>true</maven.deploy.skip>
     <!-- use com.github.github:site-maven-plugin instead of org.apache.maven.plugins:maven-site-plugin -->
     <maven.site.deploy.skip>true</maven.site.deploy.skip>

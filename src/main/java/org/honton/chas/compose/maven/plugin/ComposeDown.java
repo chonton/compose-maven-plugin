@@ -1,8 +1,6 @@
 package org.honton.chas.compose.maven.plugin;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 
@@ -17,16 +15,29 @@ public class ComposeDown extends ComposeLogsGoal {
 
   @Override
   protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
-    Path composeFile = composeProject.resolve(COMPOSE_YAML);
-    if (!Files.isReadable(composeFile)) {
+    if (!super.addComposeOptions(builder)) {
       getLog().info("No linked compose file, `compose down` not executed");
       return false;
     }
+    removeUserProperties();
+
     saveServiceLogs(composeFile);
     builder
         .addOption("--remove-orphans")
         .addOption("--volumes")
         .addOption("--timeout", Integer.toString(timeout));
     return true;
+  }
+
+  // undoes the effects of ComposeUp.allocatePorts. if we have (composite) project with multiple
+  // composeUp / composeDown goals, we need to remove the ports allocated by the first composeUp
+  // goal so that second composeUp goal can allocate ports
+  private void removeUserProperties() {
+    for (PortInfo portInfo : portInfos) {
+      String envVar = portInfo.getEnv();
+      if (envVar != null) {
+        userProperties.remove(portInfo.getProperty());
+      }
+    }
   }
 }

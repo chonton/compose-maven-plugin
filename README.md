@@ -142,6 +142,7 @@ interpolated. The user property named with the alias key is set to the interpola
 
 The [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) goal binds by default to
 the **post-integration-test** phase. This goal executes `docker compose down` using **target/compose/compose.yaml**.
+Maven user property created by the `up` goal are removed.
 
 ### Configuration
 

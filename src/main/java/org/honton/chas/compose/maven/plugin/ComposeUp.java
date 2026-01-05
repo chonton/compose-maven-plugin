@@ -12,7 +12,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import javax.inject.Inject;
 import lombok.SneakyThrows;
 import org.apache.maven.execution.MavenSession;
@@ -23,7 +22,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.interpolation.InterpolationException;
 import org.codehaus.plexus.interpolation.Interpolator;
-import org.yaml.snakeyaml.Yaml;
 
 /** Turn on compose application */
 @Mojo(name = "up", defaultPhase = LifecyclePhase.PRE_INTEGRATION_TEST, threadSafe = true)
@@ -40,12 +38,6 @@ public class ComposeUp extends ComposeLogsGoal {
    */
   @Parameter Map<String, String> alias;
 
-  @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
-  Properties userProperties;
-
-  private Yaml yaml;
-  private List<PortInfo> portInfos;
-
   @Inject
   public ComposeUp(MavenSession session, MavenProject project) {
     interpolator = InterpolatorFactory.createInterpolator(session, project);
@@ -59,16 +51,11 @@ public class ComposeUp extends ComposeLogsGoal {
   @Override
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) {
-    Path composeFile = composeProject.resolve(COMPOSE_YAML);
-    if (!Files.isReadable(composeFile)) {
+    if (!super.addComposeOptions(builder)) {
       getLog().info("No linked compose file, `compose up` not executed");
       return false;
     }
-    yaml = new Yaml();
     createHostSourceDirs();
-
-    Path portsFile = composeProject.resolve(PORTS_YAML);
-    portInfos = Files.isReadable(portsFile) ? readPorts(portsFile) : List.of();
     allocatePorts();
 
     Map<String, String> allEnv = getUnixEnv();
@@ -176,12 +163,6 @@ public class ComposeUp extends ComposeLogsGoal {
       } catch (InterpolationException e) {
         throw new MojoExecutionException(e);
       }
-    }
-  }
-
-  private List<PortInfo> readPorts(Path portsPath) throws IOException {
-    try (BufferedReader reader = Files.newBufferedReader(portsPath)) {
-      return yaml.<List<Map<String, String>>>load(reader).stream().map(PortInfo::fromMap).toList();
     }
   }
 
