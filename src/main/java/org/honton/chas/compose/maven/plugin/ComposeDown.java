@@ -1,6 +1,10 @@
 package org.honton.chas.compose.maven.plugin;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Map;
+import java.util.Set;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 
@@ -10,7 +14,8 @@ public class ComposeDown extends ComposeLogsGoal {
 
   @Override
   protected String subCommand() {
-    return "down";
+    // stop, then collect logs, then down
+    return "stop";
   }
 
   @Override
@@ -20,12 +25,10 @@ public class ComposeDown extends ComposeLogsGoal {
       return false;
     }
     removeUserProperties();
+    builder.addOption("--timeout", Integer.toString(timeout));
 
-    saveServiceLogs(composeFile);
-    builder
-        .addOption("--remove-orphans")
-        .addOption("--volumes")
-        .addOption("--timeout", Integer.toString(timeout));
+    // stop all services in linked compose file
+    readServices().forEach(builder::addOption);
     return true;
   }
 
@@ -39,5 +42,28 @@ public class ComposeDown extends ComposeLogsGoal {
         userProperties.remove(portInfo.getProperty());
       }
     }
+  }
+
+  private Set<String> readServices() throws IOException {
+    try (BufferedReader reader = Files.newBufferedReader(composeFile)) {
+      Map<String, Object> composeDefinition = yaml.load(reader);
+      Map<String, Object> map = (Map<String, Object>) composeDefinition.get("services");
+      return map.keySet();
+    }
+  }
+
+  @Override
+  protected void postComposeCommand(String exitMessage) throws IOException {
+    // save logs before down
+    saveServiceLogs(composeProject.resolve(COMPOSE_YAML));
+
+    // compose down will remove containers and networks
+    CommandBuilder builder =
+        createBuilder("down")
+            .addGlobalOption("-f", composeFile.toString())
+            .addOption("--remove-orphans")
+            .addOption("--volumes")
+            .addOption("--timeout", Integer.toString(timeout));
+    executeComposeCommand(timeout, builder);
   }
 }

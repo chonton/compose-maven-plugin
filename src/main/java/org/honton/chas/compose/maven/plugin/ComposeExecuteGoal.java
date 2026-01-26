@@ -29,7 +29,7 @@ public abstract class ComposeExecuteGoal extends ComposeGoal {
 
   protected abstract String subCommand();
 
-  private String executeComposeCommand(int secondsToWait, CommandBuilder builder) {
+  protected String executeComposeCommand(int secondsToWait, CommandBuilder builder) {
     return new ExecHelper(this.getLog()).waitForExit(secondsToWait, builder);
   }
 
