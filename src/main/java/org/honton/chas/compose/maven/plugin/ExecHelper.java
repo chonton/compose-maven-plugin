@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -79,10 +80,14 @@ public class ExecHelper {
       }
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
+      Path cwd = builder.getCwd();
+      if (cwd != null) {
+        processBuilder.directory(cwd.toFile());
+      }
       String cmdLine = String.join(" ", command);
       if (stdout == null) {
         processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
-        infoLine.accept(cmdLine);
+        infoLine.accept("cd " + cwd + "; " + cmdLine);
       } else {
         debugLine.accept(cmdLine);
       }

@@ -55,12 +55,12 @@ public class ComposeDown extends ComposeLogsGoal {
   @Override
   protected void postComposeCommand(String exitMessage) throws IOException {
     // save logs before down
-    saveServiceLogs(composeProject.resolve(COMPOSE_YAML));
+    saveServiceLogs();
 
     // compose down will remove containers and networks
     CommandBuilder builder =
         createBuilder("down")
-            .addGlobalOption("-f", composeFile.toString())
+            .addFile(COMPOSE_YAML)
             .addOption("--remove-orphans")
             .addOption("--volumes")
             .addOption("--timeout", Integer.toString(timeout));

@@ -49,11 +49,11 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
     }
   }
 
-  protected void saveServiceLogs(Path composeFile) throws IOException {
+  protected void saveServiceLogs() throws IOException {
     CommandBuilder builder =
         createBuilder("ps")
-            .addGlobalOption("-f", composeFile.toString())
-            .addOption("-a")
+            .addFile(COMPOSE_YAML)
+            .addOption("--all")
             .addOption("--format", "{{.Service}}");
 
     saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder).split("\\s+"));
