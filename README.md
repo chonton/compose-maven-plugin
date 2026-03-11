@@ -131,7 +131,6 @@ GID, the numeric group id of the current user.
 |       cli | `docker`              | compose.cli     | Name of compose cli                              |
 |       env |                       |                 | Map of compose environment variables             |
 |      logs | target/container-logs | compose.logs    | Directory for failed container logs              |
-|   project | ${project.artifactId} | compose.project | Compose project name                             |
 |      skip | false                 | compose.skip    | Skip execution                                   |
 |   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
@@ -150,7 +149,6 @@ Maven user property created by the `up` goal are removed.
 |----------:|:----------------------|:----------------|:-------------------------------------------------|
 |       cli | `docker`              | compose.cli     | Name of compose cli                              |
 |      logs | target/container-logs | compose.logs    | Directory for container logs                     |
-|   project | ${project.artifactId} | compose.project | Compose project name                             |
 |      skip | false                 | compose.skip    | Skip execution                                   |
 |   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
@@ -171,7 +169,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.14</version>
+        <version>0.0.17</version>
       </plugin>
     </plugins>
   </pluginManagement>

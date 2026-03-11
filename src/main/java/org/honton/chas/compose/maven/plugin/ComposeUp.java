@@ -63,10 +63,11 @@ public class ComposeUp extends ComposeLogsGoal {
       allEnv.putAll(env);
     }
     if (!allEnv.isEmpty()) {
-      builder.addGlobalOption("--env-file", createEnvFile(allEnv));
+      createEnvFile(allEnv);
+      builder.addGlobalOption("--env-file", DOT_ENV);
     }
     builder
-        .addGlobalOption("-f", composeFile.toString())
+        .addFile(COMPOSE_YAML)
         .addOption("--renew-anon-volumes")
         .addOption("--remove-orphans")
         .addOption("--pull", "missing")
@@ -106,7 +107,7 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private String createEnvFile(Map<String, String> allEnv) throws IOException {
+  private void createEnvFile(Map<String, String> allEnv) throws IOException {
     Path envFile = composeProject.resolve(DOT_ENV);
     try (Writer writer =
         Files.newBufferedWriter(
@@ -120,7 +121,6 @@ public class ComposeUp extends ComposeLogsGoal {
             }
           });
     }
-    return envFile.toString();
   }
 
   private void createHostSourceDirs() throws IOException {
@@ -153,7 +153,7 @@ public class ComposeUp extends ComposeLogsGoal {
   @Override
   protected void postComposeCommand(String exitMessage) throws MojoExecutionException, IOException {
     if (exitMessage != null) {
-      saveServiceLogs(composeProject.resolve(COMPOSE_YAML));
+      saveServiceLogs();
       throw new MojoExecutionException(exitMessage);
     }
     portInfos.forEach(this::assignMavenVariable);

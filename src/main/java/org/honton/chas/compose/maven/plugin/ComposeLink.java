@@ -46,7 +46,7 @@ public class ComposeLink extends ComposeProjectGoal {
   private static final String TARGET = "target";
 
   @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
-  public static final String ALL_INTERFACES = "0.0.0.0";
+  private static final String ALL_INTERFACES = "0.0.0.0";
 
   private final Interpolator interpolator;
   private final Yaml yaml;
@@ -54,6 +54,10 @@ public class ComposeLink extends ComposeProjectGoal {
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
   private final Map<String, PortInfo> variablePorts = new HashMap<>();
+
+  /** Compose project name */
+  @Parameter(property = "compose.project", defaultValue = "${project.artifactId}", required = true)
+  String project;
 
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
@@ -163,22 +167,23 @@ public class ComposeLink extends ComposeProjectGoal {
       throws IOException {
     getLog().debug("processing artifact: " + nvp.gav());
 
-    Path dstPath = composeProject.resolve(name);
+    Path absoluteDstPath = composeProject.resolve(name);
     if (nvp.prior() == null) {
-      Path parent = dstPath.getParent();
+      Path parent = absoluteDstPath.getParent();
       if (createdDirs.add(parent)) {
         Files.createDirectories(parent);
       }
     }
 
+    Path relativeDstPath = composeProject.relativize(absoluteDstPath);
     if (isCompose(name)) {
-      commandBuilder.addGlobalOption("-f", dstPath.toString());
+      commandBuilder.addFile(relativeDstPath.toString());
     } else if (name.endsWith("/.env")) {
-      commandBuilder.addGlobalOption("--env-file", dstPath.toString());
+      commandBuilder.addGlobalOption("--env-file", relativeDstPath.toString());
     }
 
     try (InputStream stream = iss.get()) {
-      copyYaml(stream, dstPath);
+      copyYaml(stream, absoluteDstPath);
     }
   }
 
@@ -374,14 +379,22 @@ public class ComposeLink extends ComposeProjectGoal {
       artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact, true);
     }
 
-    builder
-        .addGlobalOption("--project-directory", composeProject.toString())
-        .addOption("--no-interpolate")
-        .addOption("-o", composeProject.resolve(COMPOSE_YAML).toString());
-    if (!builder.getGlobalOptions().contains("-f")) {
+    List<String> files = builder.getFiles();
+    if (files.isEmpty()) {
       getLog().info("No artifacts to link, `compose config` not executed");
       return false;
     }
+
+    // project.yaml must be first file on command line so that all file references are relative to
+    // composeProjectDir (target/compose)
+    files.add(0, PROJECT_YAML);
+    Path nameFile = composeProject.resolve(PROJECT_YAML);
+    try (BufferedWriter bw = bufferedWriter(nameFile)) {
+      yaml.dump(Map.of("name", project), bw);
+    }
+
+    builder.addOption("--no-interpolate").addOption("--output", COMPOSE_YAML);
+
     return true;
   }
 
