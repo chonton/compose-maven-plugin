@@ -32,6 +32,7 @@ import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.honton.chas.compose.maven.plugin.ArtifactHelper.Coordinates;
+import org.honton.chas.compose.maven.plugin.yaml.ComposeConstructor;
 import org.yaml.snakeyaml.Yaml;
 
 /** Assemble compose configuration and attach as secondary artifact */
@@ -66,14 +67,14 @@ public class ComposeAssemble extends ComposeGoal {
   private Map<String, ArtifactInfo> coordinatesToInfo;
   private Map<String, String> serviceToCoordinates;
 
-  protected final void doExecute() throws Exception {
+  protected final void doExecute() throws IOException {
     /*
      * Directory which holds compose application configuration(s). Compose files should be in
      * subdirectories to namespace the configuration.
      */
     Path composeSrcPath = Path.of(source);
     if (Files.isDirectory(composeSrcPath)) {
-      yaml = new Yaml();
+      yaml = ComposeConstructor.createParser();
       artifactHelper = new ArtifactHelper(project, composeSrcPath, repoSystem, repoSession);
       coordinatesToInfo = new HashMap<>();
       serviceToCoordinates = new HashMap<>();

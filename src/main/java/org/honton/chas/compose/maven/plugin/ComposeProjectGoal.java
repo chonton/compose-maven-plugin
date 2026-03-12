@@ -9,11 +9,14 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
   public static final String COMPOSE_YAML = "compose.yaml";
   public static final String MOUNTS_YAML = "mounts.yaml";
   public static final String PORTS_YAML = "ports.yaml";
-  public static final String PROJECT_YAML = "project.yaml";
   public static final String DOT_ENV = ".env";
 
+  /** Compose project name */
+  @Parameter(property = "compose.project", defaultValue = "${project.artifactId}", required = true)
+  String project;
+
   /** docker compose command line interface */
-  @Parameter(property = "compose.cli", defaultValue = "docker")
+  @Parameter(property = "compose.cli", defaultValue = "docker-compose")
   String cli;
 
   /** Number of seconds to wait for compose commands */
@@ -24,39 +27,43 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
   String composeProjectDir;
 
   Path composeProject;
+  Path composeFile;
 
   @Override
-  protected void doExecute() throws Exception {
+  final void doExecute() throws IOException, MojoExecutionException {
+    composeProject = Path.of(composeProjectDir);
+    composeFile = composeProject.resolve(COMPOSE_YAML);
     CommandBuilder builder = createBuilder(subCommand());
     if (addComposeOptions(builder)) {
-      postComposeCommand(executeComposeCommand(timeout, builder));
+      String exitMessage = executeComposeCommand(builder);
+      postComposeCommand(exitMessage == null);
+      if (exitMessage != null) {
+        throw new MojoExecutionException(exitMessage);
+      }
     }
   }
 
-  protected final CommandBuilder createBuilder(String subCommand) {
-    composeProject = relativeToCurrentDirectory(composeProjectDir);
-    return new CommandBuilder(cli, subCommand).setCwd(composeProject);
+  final CommandBuilder createBuilder(String subCommand) {
+    return new CommandBuilder(cli, subCommand)
+        .setCwd(composeProject)
+        .addGlobalOption("--project-name", project);
   }
 
-  protected abstract String subCommand();
+  abstract String subCommand();
 
-  protected String executeComposeCommand(int secondsToWait, CommandBuilder builder) {
-    return new ExecHelper(this.getLog()).waitForExit(secondsToWait, builder);
+  abstract boolean addComposeOptions(CommandBuilder builder) throws IOException;
+
+  final String executeComposeCommand(CommandBuilder builder) {
+    return new ExecHelper(this.getLog()).waitForExit(timeout, builder);
   }
 
-  // override point
-  protected boolean addComposeOptions(CommandBuilder builder) throws Exception {
-    return true;
+  void postComposeCommand(boolean cmdSucceeded) throws IOException, MojoExecutionException {}
+
+  final Path relativeToCurrentDirectory(String dir) {
+    return relativeToCurrentDirectory(Path.of(dir));
   }
 
-  // override point
-  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
-    if (exitMessage != null) {
-      throw new MojoExecutionException(exitMessage);
-    }
-  }
-
-  protected Path relativeToCurrentDirectory(String dir) {
-    return Path.of("").toAbsolutePath().relativize(Path.of(dir));
+  final Path relativeToCurrentDirectory(Path path) {
+    return Path.of("").toAbsolutePath().relativize(path);
   }
 }

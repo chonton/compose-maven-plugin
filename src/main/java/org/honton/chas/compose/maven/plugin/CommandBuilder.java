@@ -16,7 +16,6 @@ public class CommandBuilder {
 
   public CommandBuilder(String cli, String subCommand) {
     globalOptions.add(cli);
-    globalOptions.add("compose");
     options.add(subCommand);
   }
 

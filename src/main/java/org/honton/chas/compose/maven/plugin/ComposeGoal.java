@@ -1,6 +1,8 @@
 package org.honton.chas.compose.maven.plugin;
 
+import java.io.IOException;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 
@@ -10,13 +12,13 @@ public abstract class ComposeGoal extends AbstractMojo {
   @Parameter(property = "compose.skip", defaultValue = "false")
   boolean skip;
 
-  public final void execute() throws MojoFailureException {
+  public final void execute() throws MojoFailureException, MojoExecutionException {
     if (skip) {
       getLog().info("skipping compose");
     } else {
       try {
         doExecute();
-      } catch (RuntimeException e) {
+      } catch (RuntimeException | MojoExecutionException e) {
         throw e;
       } catch (Exception e) {
         throw new MojoFailureException(e.getMessage(), e);
@@ -24,5 +26,5 @@ public abstract class ComposeGoal extends AbstractMojo {
     }
   }
 
-  protected abstract void doExecute() throws Exception;
+  abstract void doExecute() throws IOException, MojoExecutionException;
 }

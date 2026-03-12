@@ -34,6 +34,7 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.honton.chas.compose.maven.plugin.ArtifactHelper.Coordinates;
 import org.honton.chas.compose.maven.plugin.ArtifactHelper.InputStreamSupplier;
+import org.honton.chas.compose.maven.plugin.yaml.ComposeRepresenter;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
@@ -54,10 +55,6 @@ public class ComposeLink extends ComposeProjectGoal {
   private final Set<Path> createdDirs = new HashSet<>();
   private final Set<String> hostMounts = new HashSet<>();
   private final Map<String, PortInfo> variablePorts = new HashMap<>();
-
-  /** Compose project name */
-  @Parameter(property = "compose.project", defaultValue = "${project.artifactId}", required = true)
-  String project;
 
   /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
   @Parameter List<String> dependencies;
@@ -91,7 +88,7 @@ public class ComposeLink extends ComposeProjectGoal {
     DumperOptions yamlOptions = new DumperOptions();
     yamlOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
     yamlOptions.setDefaultScalarStyle(DumperOptions.ScalarStyle.PLAIN);
-    yaml = new Yaml(yamlOptions);
+    yaml = ComposeRepresenter.createDumper(yamlOptions);
 
     DumperOptions jsonOptions = new DumperOptions();
     jsonOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.FLOW);
@@ -114,7 +111,7 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  public String subCommand() {
+  protected String subCommand() {
     return "config";
   }
 
@@ -368,9 +365,9 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected boolean addComposeOptions(CommandBuilder builder)
-      throws MojoExecutionException, RepositoryException, IOException {
-    this.commandBuilder = builder;
+  protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
+    commandBuilder = builder;
+
     Path composeSrcPath = Path.of(source);
     artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
@@ -385,15 +382,10 @@ public class ComposeLink extends ComposeProjectGoal {
       return false;
     }
 
-    // project.yaml must be first file on command line so that all file references are relative to
-    // composeProjectDir (target/compose)
-    files.add(0, PROJECT_YAML);
-    Path nameFile = composeProject.resolve(PROJECT_YAML);
-    try (BufferedWriter bw = bufferedWriter(nameFile)) {
-      yaml.dump(Map.of("name", project), bw);
-    }
-
-    builder.addOption("--no-interpolate").addOption("--output", COMPOSE_YAML);
+    builder
+        .addGlobalOption("--project-directory", ".")
+        .addOption("--no-interpolate")
+        .addOption("--output", COMPOSE_YAML);
 
     return true;
   }
@@ -407,9 +399,15 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
-    super.postComposeCommand(exitMessage);
+  protected void postComposeCommand(boolean cmdSucceeded) throws IOException {
+    if (!cmdSucceeded) {
+      return;
+    }
+    writeMounts();
+    writePorts();
+  }
 
+  private void writeMounts() throws IOException {
     Path mountsFile = composeProject.resolve(MOUNTS_YAML);
     if (hostMounts.isEmpty()) {
       Files.deleteIfExists(mountsFile);
@@ -418,7 +416,9 @@ public class ComposeLink extends ComposeProjectGoal {
         yaml.dump(hostMounts.toArray(), bw);
       }
     }
+  }
 
+  private void writePorts() throws IOException {
     Path portsFile = composeProject.resolve(PORTS_YAML);
     if (variablePorts.isEmpty()) {
       Files.deleteIfExists(portsFile);
