@@ -10,9 +10,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Consumer;
 import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.honton.chas.compose.maven.plugin.ExecHelper.Sink;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class ComposeLogsGoal extends ComposeProjectGoal {
@@ -26,14 +26,13 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
   Properties userProperties;
 
-  protected Path composeFile;
   protected Yaml yaml;
   protected List<PortInfo> portInfos;
 
-  @Override
+  protected abstract String subCommand();
+
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
-    composeFile = composeProject.resolve(COMPOSE_YAML);
     if (!Files.isReadable(composeFile)) {
       return false;
     }
@@ -50,13 +49,14 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   }
 
   protected void saveServiceLogs() throws IOException {
-    CommandBuilder builder =
-        createBuilder("ps")
-            .addFile(COMPOSE_YAML)
-            .addOption("--all")
-            .addOption("--format", "{{.Service}}");
+    CommandBuilder builder = createBuilder("ps").addFile(COMPOSE_YAML);
+    builder.addOption("--all").addOption("--format", "{{.Service}}");
 
-    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder).split("\\s+"));
+    String allServices = new ExecHelper(getLog()).outputAsString(timeout, builder).trim();
+
+    if (!allServices.isEmpty()) {
+      saveLogs(allServices.split("\\s+"));
+    }
   }
 
   private void saveLogs(String[] services) throws IOException {
@@ -72,7 +72,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
           Files.newBufferedWriter(
               output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
-        Consumer<CharSequence> consumer =
+        Sink consumer =
             l -> {
               try {
                 writer.append(l).append('\n');

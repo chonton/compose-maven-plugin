@@ -68,12 +68,10 @@ public class ComposeUp extends ComposeLogsGoal {
     }
     builder
         .addFile(COMPOSE_YAML)
+        .addOption("--detach")
         .addOption("--renew-anon-volumes")
         .addOption("--remove-orphans")
-        .addOption("--pull", "missing")
-        .addOption("--quiet-pull")
-        .addOption("--wait")
-        .addOption("--wait-timeout", Integer.toString(timeout));
+        .addOption("--quiet-pull");
     return true;
   }
 
@@ -151,10 +149,11 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws MojoExecutionException, IOException {
-    if (exitMessage != null) {
-      saveServiceLogs();
-      throw new MojoExecutionException(exitMessage);
+  protected void postComposeCommand(boolean cmdSucceeded)
+      throws MojoExecutionException, IOException {
+    saveServiceLogs();
+    if (!cmdSucceeded) {
+      return;
     }
     portInfos.forEach(this::assignMavenVariable);
     if (alias != null) {

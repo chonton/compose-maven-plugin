@@ -3,7 +3,6 @@ package org.honton.chas.compose.maven.plugin;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -13,7 +12,6 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.maven.plugin.logging.Log;
@@ -27,9 +25,9 @@ public class ExecHelper {
       Pattern.compile("\\[?(error)]?:? ?(.+)", Pattern.CASE_INSENSITIVE);
 
   private final ExecutorCompletionService<Object> completionService;
-  private final Consumer<CharSequence> debugLine;
-  private final Consumer<CharSequence> infoLine;
-  private final Consumer<CharSequence> errorLine;
+  private final Sink debugLine;
+  private final Sink infoLine;
+  private final Sink errorLine;
   private final StringBuilder errorOutput;
 
   public ExecHelper(Log log) {
@@ -69,15 +67,8 @@ public class ExecHelper {
     completionService = new ExecutorCompletionService<>(new ScheduledThreadPoolExecutor(1));
   }
 
-  public void createProcess(
-      CommandBuilder builder,
-      String stdin,
-      Consumer<CharSequence> stdout,
-      Consumer<CharSequence> stderr) {
+  void createProcess(CommandBuilder builder, Sink stdout, Sink stderr) {
     try {
-      if (stdout != null) {
-        builder.addGlobalOption("--ansi", "never");
-      }
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
       Path cwd = builder.getCwd();
@@ -86,8 +77,8 @@ public class ExecHelper {
       }
       String cmdLine = String.join(" ", command);
       if (stdout == null) {
-        processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
-        infoLine.accept("cd " + cwd + "; " + cmdLine);
+        infoLine.accept(cmdLine);
+        stdout = System.err::println;
       } else {
         debugLine.accept(cmdLine);
       }
@@ -97,25 +88,20 @@ public class ExecHelper {
       Process process = processBuilder.start();
       startPump(process.getInputStream(), stdout);
       startPump(process.getErrorStream(), stderr);
-
-      OutputStream os = process.getOutputStream();
-      if (stdin != null) {
-        os.write(stdin.getBytes(StandardCharsets.UTF_8));
-      }
-      os.close();
       completionService.submit(process::waitFor);
+      process.getOutputStream().close();
     } catch (IOException ex) {
       throw new UncheckedIOException(ex);
     }
   }
 
-  private void startPump(InputStream process, Consumer<CharSequence> std) {
+  private void startPump(InputStream process, Sink std) {
     if (process != null) {
       completionService.submit(() -> pumpLog(process, std));
     }
   }
 
-  private Void pumpLog(InputStream is, Consumer<CharSequence> lineConsumer) throws IOException {
+  private String pumpLog(InputStream is, Sink lineConsumer) throws IOException {
     try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
       StringBuilder sb = new StringBuilder();
       for (; ; ) {
@@ -136,14 +122,7 @@ public class ExecHelper {
     }
   }
 
-  public void waitNoError(int secondsToWait) {
-    String message = waitForResult(secondsToWait);
-    if (message != null) {
-      throw new IllegalStateException(message);
-    }
-  }
-
-  public String waitForResult(int secondsToWait) {
+  private String waitForResult(int secondsToWait) {
     long timeToGo = TimeUnit.SECONDS.toMillis(secondsToWait);
     long endTime = System.currentTimeMillis() + timeToGo;
     try {
@@ -165,19 +144,27 @@ public class ExecHelper {
 
   public String outputAsString(int secondsToWait, CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    Consumer<CharSequence> consumer = l -> sb.append(l).append('\n');
+    Sink consumer = l -> sb.append(l).append('\n');
     outputToConsumer(secondsToWait, consumer, builder);
     return sb.toString();
   }
 
-  public void outputToConsumer(
-      int secondsToWait, Consumer<CharSequence> consumer, CommandBuilder builder) {
-    createProcess(builder, null, consumer, errorLine);
-    waitNoError(secondsToWait);
+  public void outputToConsumer(int secondsToWait, Sink consumer, CommandBuilder builder) {
+    createProcess(builder, consumer, errorLine);
+    String message = waitForResult(secondsToWait);
+    if (message != null) {
+      throw new IllegalStateException(message);
+    }
   }
 
   public String waitForExit(int secondsToWait, CommandBuilder builder) {
-    createProcess(builder, null, null, null);
+    createProcess(builder, null, errorLine);
     return waitForResult(secondsToWait);
+  }
+
+  @FunctionalInterface
+  public interface Sink {
+
+    void accept(CharSequence line) throws IOException;
   }
 }

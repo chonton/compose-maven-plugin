@@ -25,7 +25,6 @@ public class ComposeDown extends ComposeLogsGoal {
       return false;
     }
     removeUserProperties();
-    builder.addOption("--timeout", Integer.toString(timeout));
 
     // stop all services in linked compose file
     readServices().forEach(builder::addOption);
@@ -53,7 +52,7 @@ public class ComposeDown extends ComposeLogsGoal {
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws IOException {
+  protected void postComposeCommand(boolean cmdSucceeded) throws IOException {
     // save logs before down
     saveServiceLogs();
 
@@ -62,8 +61,7 @@ public class ComposeDown extends ComposeLogsGoal {
         createBuilder("down")
             .addFile(COMPOSE_YAML)
             .addOption("--remove-orphans")
-            .addOption("--volumes")
-            .addOption("--timeout", Integer.toString(timeout));
-    executeComposeCommand(timeout, builder);
+            .addOption("--volumes");
+    executeComposeCommand(builder);
   }
 }

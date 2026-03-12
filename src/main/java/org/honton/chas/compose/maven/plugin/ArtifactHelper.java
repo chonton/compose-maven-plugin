@@ -54,8 +54,7 @@ class ArtifactHelper {
     return namespace + '/' + path.getFileName();
   }
 
-  static void forEach(Collection<String> collection, DependencyConsumer consumer)
-      throws MojoExecutionException, RepositoryException, IOException {
+  static void forEach(Collection<String> collection, DependencyConsumer consumer) {
     if (collection != null) {
       SneakyDependencyConsumer sneaky = new SneakyDependencyConsumer(consumer);
       collection.stream().flatMap(ArtifactHelper::splitAndTrim).forEach(sneaky);
