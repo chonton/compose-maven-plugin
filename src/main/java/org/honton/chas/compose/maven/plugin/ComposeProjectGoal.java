@@ -40,8 +40,9 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
 
   protected abstract String subCommand();
 
-  protected String executeComposeCommand(int secondsToWait, CommandBuilder builder) {
-    return new ExecHelper(this.getLog()).waitForExit(secondsToWait, builder);
+  protected String executeComposeCommand(int secondsToWait, CommandBuilder builder)
+      throws IOException {
+    return new ExecHelper(cli, this.getLog()).waitForExit(secondsToWait, builder);
   }
 
   // override point

@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
@@ -13,7 +14,6 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.maven.plugin.logging.Log;
@@ -27,12 +27,14 @@ public class ExecHelper {
       Pattern.compile("\\[?(error)]?:? ?(.+)", Pattern.CASE_INSENSITIVE);
 
   private final ExecutorCompletionService<Object> completionService;
-  private final Consumer<CharSequence> debugLine;
-  private final Consumer<CharSequence> infoLine;
-  private final Consumer<CharSequence> errorLine;
+  private final Sink debugLine;
+  private final Sink infoLine;
+  private final Sink errorLine;
   private final StringBuilder errorOutput;
+  private final boolean isPodman;
 
-  public ExecHelper(Log log) {
+  public ExecHelper(String cli, Log log) {
+    this.isPodman = cli.contains("podman");
     errorOutput = new StringBuilder();
 
     debugLine =
@@ -69,14 +71,14 @@ public class ExecHelper {
     completionService = new ExecutorCompletionService<>(new ScheduledThreadPoolExecutor(1));
   }
 
-  public void createProcess(
-      CommandBuilder builder,
-      String stdin,
-      Consumer<CharSequence> stdout,
-      Consumer<CharSequence> stderr) {
+  void createProcess(CommandBuilder builder, String stdin, Sink stdout, Sink stderr) {
     try {
       if (stdout != null) {
-        builder.addGlobalOption("--ansi", "never");
+        if (isPodman) {
+          builder.addGlobalOption("--no-ansi");
+        } else {
+          builder.addGlobalOption("--ansi", "never");
+        }
       }
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -86,7 +88,7 @@ public class ExecHelper {
       }
       String cmdLine = String.join(" ", command);
       if (stdout == null) {
-        processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
+        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         infoLine.accept("cd " + cwd + "; " + cmdLine);
       } else {
         debugLine.accept(cmdLine);
@@ -109,13 +111,13 @@ public class ExecHelper {
     }
   }
 
-  private void startPump(InputStream process, Consumer<CharSequence> std) {
+  private void startPump(InputStream process, Sink std) {
     if (process != null) {
       completionService.submit(() -> pumpLog(process, std));
     }
   }
 
-  private Void pumpLog(InputStream is, Consumer<CharSequence> lineConsumer) throws IOException {
+  private Void pumpLog(InputStream is, Sink lineConsumer) throws IOException {
     try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
       StringBuilder sb = new StringBuilder();
       for (; ; ) {
@@ -165,19 +167,29 @@ public class ExecHelper {
 
   public String outputAsString(int secondsToWait, CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    Consumer<CharSequence> consumer = l -> sb.append(l).append('\n');
+    Sink consumer = l -> sb.append(l).append('\n');
     outputToConsumer(secondsToWait, consumer, builder);
     return sb.toString();
   }
 
-  public void outputToConsumer(
-      int secondsToWait, Consumer<CharSequence> consumer, CommandBuilder builder) {
+  public void outputToConsumer(int secondsToWait, Sink consumer, CommandBuilder builder) {
     createProcess(builder, null, consumer, errorLine);
     waitNoError(secondsToWait);
+  }
+
+  public String outputToWriter(int secondsToWait, Writer writer, CommandBuilder builder) {
+    createProcess(builder, null, l -> writer.append(l).append('\n'), errorLine);
+    return waitForResult(secondsToWait);
   }
 
   public String waitForExit(int secondsToWait, CommandBuilder builder) {
     createProcess(builder, null, null, null);
     return waitForResult(secondsToWait);
+  }
+
+  @FunctionalInterface
+  public interface Sink {
+
+    void accept(CharSequence line) throws IOException;
   }
 }

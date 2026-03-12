@@ -10,9 +10,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Consumer;
 import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.honton.chas.compose.maven.plugin.ExecHelper.Sink;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class ComposeLogsGoal extends ComposeProjectGoal {
@@ -56,7 +56,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
             .addOption("--all")
             .addOption("--format", "{{.Service}}");
 
-    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder).split("\\s+"));
+    saveLogs(new ExecHelper(cli, getLog()).outputAsString(timeout, builder).split("\\s+"));
   }
 
   private void saveLogs(String[] services) throws IOException {
@@ -72,7 +72,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
           Files.newBufferedWriter(
               output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
-        Consumer<CharSequence> consumer =
+        Sink consumer =
             l -> {
               try {
                 writer.append(l).append('\n');
@@ -80,7 +80,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
                 throw new UncheckedIOException(e);
               }
             };
-        new ExecHelper(getLog()).outputToConsumer(timeout, consumer, builder);
+        new ExecHelper(cli, getLog()).outputToConsumer(timeout, consumer, builder);
       }
     }
   }

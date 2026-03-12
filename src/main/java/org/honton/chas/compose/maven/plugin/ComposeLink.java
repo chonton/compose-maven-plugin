@@ -393,9 +393,19 @@ public class ComposeLink extends ComposeProjectGoal {
       yaml.dump(Map.of("name", project), bw);
     }
 
-    builder.addOption("--no-interpolate").addOption("--output", COMPOSE_YAML);
+    if (!cli.contains("podman")) {
+      builder.addOption("--no-interpolate");
+    }
 
     return true;
+  }
+
+  @Override
+  protected String executeComposeCommand(int secondsToWait, CommandBuilder builder)
+      throws IOException {
+    try (BufferedWriter bw = bufferedWriter(composeProject.resolve(COMPOSE_YAML))) {
+      return new ExecHelper(cli, this.getLog()).outputToWriter(secondsToWait, bw, builder);
+    }
   }
 
   private void processLocalArtifact(String classifier, String namespace, Path composeYaml)

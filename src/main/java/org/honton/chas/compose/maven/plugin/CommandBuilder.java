@@ -26,6 +26,11 @@ public class CommandBuilder {
     return this;
   }
 
+  public CommandBuilder addGlobalOption(String optionKey) {
+    globalOptions.add(optionKey);
+    return this;
+  }
+
   public CommandBuilder addFile(String file) {
     files.add(file);
     return this;

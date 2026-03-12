@@ -70,10 +70,7 @@ public class ComposeUp extends ComposeLogsGoal {
         .addFile(COMPOSE_YAML)
         .addOption("--renew-anon-volumes")
         .addOption("--remove-orphans")
-        .addOption("--pull", "missing")
-        .addOption("--quiet-pull")
-        .addOption("--wait")
-        .addOption("--wait-timeout", Integer.toString(timeout));
+        .addOption("--quiet-pull");
     return true;
   }
 
@@ -169,7 +166,7 @@ public class ComposeUp extends ComposeLogsGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port = new ExecHelper(this.getLog()).outputAsString(timeout, builder).strip();
+    String port = new ExecHelper(cli, this.getLog()).outputAsString(timeout, builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     userProperties.put(portInfo.getProperty(), port);
