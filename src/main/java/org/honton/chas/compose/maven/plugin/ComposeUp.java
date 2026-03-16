@@ -277,9 +277,9 @@ public class ComposeUp extends ComposeLogsGoal {
     command.add(cli);
     command.add("exec");
     if (getLog().isDebugEnabled()) {
-      command.add("--detach");
-    } else {
       command.add("-iT");
+    } else {
+      command.add("--detach");
     }
     command.add(healthCheck.getServiceName());
     command.addAll(healthCheck.getTest());
