@@ -1,8 +1,6 @@
 package org.honton.chas.compose.maven.plugin;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.Map;
 import java.util.Set;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -25,7 +23,6 @@ public class ComposeDown extends ComposeLogsGoal {
       return false;
     }
     removeUserProperties();
-    builder.addOption("--timeout", Integer.toString(timeout));
 
     // stop all services in linked compose file
     readServices().forEach(builder::addOption);
@@ -45,15 +42,13 @@ public class ComposeDown extends ComposeLogsGoal {
   }
 
   private Set<String> readServices() throws IOException {
-    try (BufferedReader reader = Files.newBufferedReader(composeFile)) {
-      Map<String, Object> composeDefinition = yaml.load(reader);
-      Map<String, Object> map = (Map<String, Object>) composeDefinition.get("services");
-      return map.keySet();
-    }
+    Map<String, Object> composeDefinition = readFile(composeFile);
+    Map<String, Object> map = (Map<String, Object>) composeDefinition.get("services");
+    return map.keySet();
   }
 
   @Override
-  protected void postComposeCommand(String exitMessage) throws IOException {
+  protected void postComposeCommand(boolean cmdSucceeded) throws IOException {
     // save logs before down
     saveServiceLogs();
 
@@ -62,8 +57,7 @@ public class ComposeDown extends ComposeLogsGoal {
         createBuilder("down")
             .addFile(COMPOSE_YAML)
             .addOption("--remove-orphans")
-            .addOption("--volumes")
-            .addOption("--timeout", Integer.toString(timeout));
-    executeComposeCommand(timeout, builder);
+            .addOption("--volumes");
+    executeComposeCommand(builder);
   }
 }

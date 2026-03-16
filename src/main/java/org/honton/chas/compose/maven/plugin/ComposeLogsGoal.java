@@ -10,9 +10,10 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Consumer;
 import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.honton.chas.compose.maven.plugin.ExecHelper.Sink;
+import org.honton.chas.compose.maven.plugin.yaml.ComposeConstructor;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class ComposeLogsGoal extends ComposeProjectGoal {
@@ -26,37 +27,49 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
   Properties userProperties;
 
-  protected Path composeFile;
   protected Yaml yaml;
   protected List<PortInfo> portInfos;
 
-  @Override
+  protected abstract String subCommand();
+
   @SneakyThrows
   protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
-    composeFile = composeProject.resolve(COMPOSE_YAML);
     if (!Files.isReadable(composeFile)) {
       return false;
     }
-    yaml = new Yaml();
+    yaml = ComposeConstructor.createParser();
     Path portsFile = composeProject.resolve(PORTS_YAML);
     portInfos = Files.isReadable(portsFile) ? readPorts(portsFile) : List.of();
     return true;
   }
 
-  private List<PortInfo> readPorts(Path portsPath) throws IOException {
-    try (BufferedReader reader = Files.newBufferedReader(portsPath)) {
-      return yaml.<List<Map<String, String>>>load(reader).stream().map(PortInfo::fromMap).toList();
+  <T> T readFile(Path path) throws IOException {
+    try (BufferedReader reader = Files.newBufferedReader(path)) {
+      return yaml.load(reader);
     }
   }
 
-  protected void saveServiceLogs() throws IOException {
-    CommandBuilder builder =
-        createBuilder("ps")
-            .addFile(COMPOSE_YAML)
-            .addOption("--all")
-            .addOption("--format", "{{.Service}}");
+  private List<PortInfo> readPorts(Path portsPath) throws IOException {
+    List<Map<String, String>> ports = readFile(portsPath);
+    return ports.stream().map(PortInfo::fromMap).toList();
+  }
 
-    saveLogs(new ExecHelper(getLog()).outputAsString(timeout, builder).split("\\s+"));
+  void saveServiceLogs() throws IOException {
+    String[] allServices = getServices(true);
+    if (allServices != null) {
+      saveLogs(allServices);
+    }
+  }
+
+  String[] getServices(boolean all) {
+    CommandBuilder builder =
+        createBuilder("ps").addFile(COMPOSE_YAML).addOption("--format", "{{.Service}}");
+    if (all) {
+      builder.addOption("--all");
+    }
+
+    String allServices = new ExecHelper(getLog()).outputAsString(timeout, builder).trim();
+    return allServices.isEmpty() ? null : allServices.split("\\s+");
   }
 
   private void saveLogs(String[] services) throws IOException {
@@ -72,7 +85,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
           Files.newBufferedWriter(
               output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 
-        Consumer<CharSequence> consumer =
+        Sink consumer =
             l -> {
               try {
                 writer.append(l).append('\n');
