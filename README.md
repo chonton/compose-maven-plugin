@@ -98,7 +98,7 @@ set to **target/compose**. The linked application file is saved as **target/comp
 |    Parameter | Default               | Property        | Description                                      |
 |-------------:|:----------------------|:----------------|:-------------------------------------------------|
 |       attach | true                  | compose.attach  | Attach compose file as build artifact            |
-|          cli | `docker`              | compose.cli     | Name of compose cli                              |
+|          cli | `docker-compose`      | compose.cli     | Name of compose cli                              |
 | dependencies |                       |                 | Dependency coordinates                           |
 |       filter | true                  | compose.filter  | Interpolate maven properties while linking       |
 |      project | ${project.artifactId} | compose.project | Compose project name                             |
@@ -125,17 +125,26 @@ GID, the numeric group id of the current user.
 
 ### Configuration
 
-| Parameter | Default               | Property        | Description                                      |
-|----------:|:----------------------|:----------------|:-------------------------------------------------|
-|     alias | true                  |                 | Map of user property aliases                     |
-|       cli | `docker`              | compose.cli     | Name of compose cli                              |
-|       env |                       |                 | Map of compose environment variables             |
-|      logs | target/container-logs | compose.logs    | Directory for failed container logs              |
-|      skip | false                 | compose.skip    | Skip execution                                   |
-|   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
+|         Parameter | Default               | Property                  | Description                              |
+|------------------:|:----------------------|:--------------------------|:-----------------------------------------|
+|             alias | true                  |                           | Map of user property aliases             |
+| allServiceHealthy | false                 | compose.allServiceHealthy | Check all service_started conditions     |
+|               cli | `docker-compose`      | compose.cli               | Name of compose cli                      |
+|               env |                       |                           | Map of compose environment variables     |
+|              logs | target/container-logs | compose.logs              | Directory for failed container logs      |
+|              skip | false                 | compose.skip              | Skip execution                           |
+|           timeout | 30                    | compose.timeout           | Number of seconds to wait for completion |
 
-After user properties for ports are set, alias user properties are evaluated. For each alias, the alias value is
-interpolated. The user property named with the alias key is set to the interpolation result.
+Once `docker-compose` command has returned, the plugin will check the health of each service. If any defined condition
+is not healthy, the plugin will fail the build. If `allServiceHealthy` is false, `service_started` conditions with
+downstream are services are ignored. Startup traces will be collected in the **target/compose-startup** directory.
+
+Once health conditions are satisfied, the plugin will set maven user properties for each allocated port. After user
+properties for ports are set, alias user properties are evaluated. For each alias, the alias value is interpolated. The
+user property named with the alias key is set to the interpolation result.
+
+If `docker-compose` fails or health conditions are not satisfied, logs for each container will be collected in the
+**target/compose-logs/** directory.
 
 ## Down Goal
 
@@ -147,14 +156,14 @@ Maven user property created by the `up` goal are removed.
 
 | Parameter | Default               | Property        | Description                                      |
 |----------:|:----------------------|:----------------|:-------------------------------------------------|
-|       cli | `docker`              | compose.cli     | Name of compose cli                              |
+|       cli | `docker-compose`      | compose.cli     | Name of compose cli                              |
 |      logs | target/container-logs | compose.logs    | Directory for container logs                     |
 |      skip | false                 | compose.skip    | Skip execution                                   |
 |   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 ### Container logs
 
-Before taking down an application, the `down` goal copies the logs of each service container to the **target/compose/**
+Before taking down an application, the `down` goal copies the logs of each service container to **target/compose-logs/**
 directory.
 
 # Examples

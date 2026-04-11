@@ -42,6 +42,9 @@ public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
 
+  @Parameter(property = "compose.allServiceHealthy", defaultValue = "false")
+  boolean allServiceHealthy;
+
   @Parameter(
       property = "compose.startup",
       defaultValue = "${project.build.directory}/compose-startup",
@@ -230,17 +233,18 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void checkDependencies(Object dependsOn, Set<String> servicesWithDependents) {
-    if (dependsOn instanceof List shortForm) {
-      shortForm.forEach(
-          dependency -> {
-            if (dependency instanceof String dependencyName) {
-              servicesWithDependents.add(dependencyName);
-            }
-          });
-    }
+    // check long form conditions to see if health check already enforced
     if (dependsOn instanceof Map longForm) {
       ((Map<String, ?>) longForm)
-          .forEach((dependencyName, dependency) -> servicesWithDependents.add(dependencyName));
+          .forEach(
+              (String serviceName, Object behavior) -> {
+                if (behavior instanceof Map dependencyBehavior
+                    && dependencyBehavior.get("condition") instanceof String condition
+                    && (condition.equals("service_completed_successfully")
+                        || (condition.equals("service_healthy") && !allServiceHealthy))) {
+                  servicesWithDependents.add(serviceName);
+                }
+              });
     }
   }
 
