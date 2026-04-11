@@ -168,34 +168,44 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   @Override
-  protected void postComposeCommand(boolean cmdSucceeded)
+  protected String postComposeCommand(String exitMessage)
       throws MojoExecutionException, IOException {
-    saveServiceLogs();
-    if (!cmdSucceeded) {
-      return;
+    // if compose up failed, save logs
+    if (exitMessage != null) {
+      saveServiceLogs();
     }
-    checkHealth();
-    portInfos.forEach(this::assignMavenVariable);
-    if (alias != null) {
-      try {
-        interpolateAliases();
-      } catch (InterpolationException e) {
-        throw new MojoExecutionException(e);
+
+    // always check health
+    List<String> failedHealthChecks = checkHealth();
+    if (!failedHealthChecks.isEmpty() && exitMessage == null) {
+      exitMessage = "Health checks failed for services " + failedHealthChecks;
+    }
+
+    // if success, assign maven variables
+    if (exitMessage == null) {
+      portInfos.forEach(this::assignMavenVariable);
+      if (alias != null) {
+        try {
+          interpolateAliases();
+        } catch (InterpolationException e) {
+          throw new MojoExecutionException(e);
+        }
       }
     }
+    return exitMessage;
   }
 
-  private void checkHealth() throws MojoExecutionException, IOException {
-    startupPath = relativeToCurrentDirectory(startupLogs);
-    Files.createDirectories(startupPath);
-
+  private List<String> checkHealth() throws MojoExecutionException, IOException {
     Map<String, Object> model = readFile(composeFile);
     if (model.get("services") instanceof Map<?, ?> services) {
       Map<String, HealthCheck> healthChecks = readServices(services);
       if (!healthChecks.isEmpty()) {
-        runChecks(healthChecks);
+        startupPath = relativeToCurrentDirectory(startupLogs);
+        Files.createDirectories(startupPath);
+        return runChecks(healthChecks);
       }
     }
+    return List.of();
   }
 
   private Map<String, HealthCheck> readServices(Map<?, ?> services) {
@@ -248,7 +258,7 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private void runChecks(Map<String, HealthCheck> checks) throws MojoExecutionException {
+  private List<String> runChecks(Map<String, HealthCheck> checks) throws MojoExecutionException {
     List<String> failedHealthChecks = new ArrayList<>();
     ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
     try {
@@ -285,9 +295,7 @@ public class ComposeUp extends ComposeLogsGoal {
     } finally {
       executor.shutdown();
     }
-    if (!failedHealthChecks.isEmpty()) {
-      throw new MojoExecutionException("Health checks failed for services " + failedHealthChecks);
-    }
+    return failedHealthChecks;
   }
 
   private Process executeHealthCheck(HealthCheck healthCheck) throws IOException {

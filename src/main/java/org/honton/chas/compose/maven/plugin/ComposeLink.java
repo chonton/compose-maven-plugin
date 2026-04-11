@@ -399,12 +399,12 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected void postComposeCommand(boolean cmdSucceeded) throws IOException {
-    if (!cmdSucceeded) {
-      return;
+  protected String postComposeCommand(String exitMessage) throws IOException {
+    if (exitMessage == null) {
+      writeMounts();
+      writePorts();
     }
-    writeMounts();
-    writePorts();
+    return exitMessage;
   }
 
   private void writeMounts() throws IOException {

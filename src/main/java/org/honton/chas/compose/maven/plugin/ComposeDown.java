@@ -48,7 +48,7 @@ public class ComposeDown extends ComposeLogsGoal {
   }
 
   @Override
-  protected void postComposeCommand(boolean cmdSucceeded) throws IOException {
+  protected String postComposeCommand(String exitMessage) throws IOException {
     // save logs before down
     saveServiceLogs();
 
@@ -59,5 +59,7 @@ public class ComposeDown extends ComposeLogsGoal {
             .addOption("--remove-orphans")
             .addOption("--volumes");
     executeComposeCommand(builder);
+
+    return exitMessage;
   }
 }

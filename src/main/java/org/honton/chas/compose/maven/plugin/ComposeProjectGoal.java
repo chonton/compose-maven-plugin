@@ -35,8 +35,7 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
     composeFile = composeProject.resolve(COMPOSE_YAML);
     CommandBuilder builder = createBuilder(subCommand());
     if (addComposeOptions(builder)) {
-      String exitMessage = executeComposeCommand(builder);
-      postComposeCommand(exitMessage == null);
+      String exitMessage = postComposeCommand(executeComposeCommand(builder));
       if (exitMessage != null) {
         throw new MojoExecutionException(exitMessage);
       }
@@ -57,7 +56,9 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
     return new ExecHelper(this.getLog()).waitForExit(timeout, builder);
   }
 
-  void postComposeCommand(boolean cmdSucceeded) throws IOException, MojoExecutionException {}
+  String postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
+    return exitMessage;
+  }
 
   final Path relativeToCurrentDirectory(String dir) {
     return relativeToCurrentDirectory(Path.of(dir));
