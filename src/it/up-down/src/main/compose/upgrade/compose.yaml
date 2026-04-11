@@ -10,6 +10,11 @@ services:
       protocol: tcp
       app_protocol: http
       mode: host
+    healthcheck:
+      test: ["CMD", "ip", "addr", "show"]
+      interval: 1s
+      timeout: 1s
+      retries: 3
     volumes:
     - type: bind
       target: /tmp

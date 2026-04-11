@@ -28,10 +28,8 @@ public class ExecHelper {
   private final Sink debugLine;
   private final Sink infoLine;
   private final Sink errorLine;
-  private final StringBuilder errorOutput;
 
   public ExecHelper(Log log) {
-    errorOutput = new StringBuilder();
 
     debugLine =
         lineText -> {
@@ -48,7 +46,6 @@ public class ExecHelper {
     errorLine =
         lineText -> {
           if (lineText != null) {
-            errorOutput.append(lineText);
             Matcher warning = WARNING.matcher(lineText);
             if (warning.matches()) {
               log.warn(warning.group(2));

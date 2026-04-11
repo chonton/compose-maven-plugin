@@ -4,10 +4,14 @@ import com.sun.security.auth.module.UnixSystem;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.OffsetTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,6 +42,12 @@ public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
 
+  @Parameter(
+      property = "compose.startup",
+      defaultValue = "${project.build.directory}/compose-startup",
+      required = true)
+  String startupLogs;
+
   /** Environment variables to apply */
   @Parameter Map<String, String> env = new HashMap<>();
 
@@ -46,6 +56,8 @@ public class ComposeUp extends ComposeLogsGoal {
    * host port values, each alias is interpolated and is assigned.
    */
   @Parameter Map<String, String> alias;
+
+  private Path startupPath;
 
   @Inject
   public ComposeUp(MavenSession session, MavenProject project) {
@@ -171,6 +183,9 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void checkHealth() throws MojoExecutionException, IOException {
+    startupPath = relativeToCurrentDirectory(startupLogs);
+    Files.createDirectories(startupPath);
+
     Map<String, Object> model = readFile(composeFile);
     if (model.get("services") instanceof Map<?, ?> services) {
       Map<String, HealthCheck> healthChecks = readServices(services);
@@ -181,7 +196,7 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private Map<String, HealthCheck> readServices(Map<?, ?> services) {
-    Map<String, HealthCheck> healthchecks = new HashMap<>();
+    Map<String, HealthCheck> healthChecks = new HashMap<>();
     Set<String> servicesWithDependents = new HashSet<>();
     for (Map.Entry<?, ?> entries : services.entrySet()) {
       if (entries.getKey() instanceof String serviceName
@@ -190,14 +205,14 @@ public class ComposeUp extends ComposeLogsGoal {
         if (service.get("healthcheck") instanceof Map hcm) {
           HealthCheck healthCheck = HealthCheck.fromMap(serviceName, hcm);
           if (!healthCheck.getTest().isEmpty()) {
-            healthchecks.put(serviceName, healthCheck);
+            healthChecks.put(serviceName, healthCheck);
           }
         }
         Object dependsOn = service.get("depends_on");
         checkDependencies(dependsOn, servicesWithDependents);
       }
     }
-    servicesWithDependents.forEach(healthchecks::remove);
+    servicesWithDependents.forEach(healthChecks::remove);
 
     String[] runningServices = getServices(false);
     if (runningServices == null) {
@@ -206,7 +221,7 @@ public class ComposeUp extends ComposeLogsGoal {
 
     Map<String, HealthCheck> activeHealthChecks = new HashMap<>();
     for (String service : runningServices) {
-      HealthCheck healthCheck = healthchecks.get(service);
+      HealthCheck healthCheck = healthChecks.get(service);
       if (healthCheck != null) {
         activeHealthChecks.put(service, healthCheck);
       }
@@ -272,17 +287,25 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private Process executeHealthCheck(HealthCheck healthCheck) throws IOException {
+    String serviceName = healthCheck.getServiceName();
+
+    Path trace = startupPath.resolve(serviceName + ".log");
+
     // docker-compose exec [OPTIONS] SERVICE COMMAND [ARGS...]
     List<String> command = new ArrayList<>();
     command.add(cli);
     command.add("exec");
-    if (getLog().isDebugEnabled()) {
-      command.add("-iT");
-    } else {
-      command.add("--detach");
-    }
-    command.add(healthCheck.getServiceName());
+    command.add("-it");
+    command.add(serviceName);
     command.addAll(healthCheck.getTest());
+
+    StringBuilder sb =
+        new StringBuilder()
+            .append(OffsetTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_LOCAL_TIME));
+    command.forEach(s -> sb.append(' ').append(s));
+    sb.append('\n');
+
+    Files.writeString(trace, sb);
 
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.directory(composeProject.toFile());
@@ -291,7 +314,7 @@ public class ComposeUp extends ComposeLogsGoal {
     getLog().info(cmdLine);
 
     processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
-    processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+    processBuilder.redirectOutput(Redirect.appendTo(trace.toFile()));
     Process process = processBuilder.start();
     process.getOutputStream().close();
     return process;
