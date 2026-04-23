@@ -126,7 +126,7 @@ public class HealthCheck {
         startCheck = now;
         delay = 0;
       } else {
-        delay = now - startCheck + nextCheck;
+        delay = startCheck + nextCheck - now;
       }
 
       Callable<HealthCheck> healthCheckCallable = () -> executeCmd(runner);
