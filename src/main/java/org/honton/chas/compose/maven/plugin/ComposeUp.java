@@ -42,12 +42,15 @@ public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
 
+  /** If true, check all services are healthy, including services that have downstream services */
   @Parameter(property = "compose.allServiceHealthy", defaultValue = "false")
   boolean allServiceHealthy;
 
+  /** If true, health checks are skipped. */
   @Parameter(property = "compose.noHealthCheck", defaultValue = "false")
   boolean noHealthCheck;
 
+  /** Directory for container startup logs */
   @Parameter(
       property = "compose.startup",
       defaultValue = "${project.build.directory}/compose-startup",
