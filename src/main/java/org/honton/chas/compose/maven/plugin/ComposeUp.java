@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.lang.ProcessBuilder.Redirect;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -329,7 +330,7 @@ public class ComposeUp extends ComposeLogsGoal {
     command.forEach(s -> sb.append(' ').append(s));
     sb.append('\n');
 
-    Files.writeString(trace, sb);
+    Files.writeString(trace, sb, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
 
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.directory(composeProject.toFile());
