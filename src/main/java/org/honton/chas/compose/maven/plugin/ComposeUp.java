@@ -45,6 +45,9 @@ public class ComposeUp extends ComposeLogsGoal {
   @Parameter(property = "compose.allServiceHealthy", defaultValue = "false")
   boolean allServiceHealthy;
 
+  @Parameter(property = "compose.noHealthCheck", defaultValue = "false")
+  boolean noHealthCheck;
+
   @Parameter(
       property = "compose.startup",
       defaultValue = "${project.build.directory}/compose-startup",
@@ -175,10 +178,12 @@ public class ComposeUp extends ComposeLogsGoal {
       saveServiceLogs();
     }
 
-    // always check health
-    List<String> failedHealthChecks = checkHealth();
-    if (!failedHealthChecks.isEmpty() && exitMessage == null) {
-      exitMessage = "Health checks failed for services " + failedHealthChecks;
+    if (!noHealthCheck) {
+      // check health
+      List<String> failedHealthChecks = checkHealth();
+      if (!failedHealthChecks.isEmpty() && exitMessage == null) {
+        exitMessage = "Health checks failed for services " + failedHealthChecks;
+      }
     }
 
     // if success, assign maven variables
@@ -268,7 +273,11 @@ public class ComposeUp extends ComposeLogsGoal {
 
       while (!checks.isEmpty()) {
         try {
-          Future<HealthCheck> future = completionQueue.poll(timeout, TimeUnit.SECONDS);
+          long timeToGo = endTime - System.currentTimeMillis();
+          if (timeToGo <= 0) {
+            throw new MojoExecutionException("Timeout waiting for health checks to complete");
+          }
+          Future<HealthCheck> future = completionQueue.poll(timeToGo, TimeUnit.MILLISECONDS);
           if (future == null) {
             throw new MojoExecutionException("Timeout waiting for health checks to complete");
           }
@@ -335,7 +344,7 @@ public class ComposeUp extends ComposeLogsGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port = new ExecHelper(this.getLog()).outputAsString(timeout, builder).strip();
+    String port = new ExecHelper(this.getLog()).outputAsString(endTime, builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     userProperties.put(portInfo.getProperty(), port);

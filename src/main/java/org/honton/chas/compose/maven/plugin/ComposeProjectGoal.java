@@ -2,6 +2,7 @@ package org.honton.chas.compose.maven.plugin;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Parameter;
 
@@ -28,6 +29,7 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
 
   Path composeProject;
   Path composeFile;
+  long endTime;
 
   @Override
   final void doExecute() throws IOException, MojoExecutionException {
@@ -53,7 +55,8 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
   abstract boolean addComposeOptions(CommandBuilder builder) throws IOException;
 
   final String executeComposeCommand(CommandBuilder builder) {
-    return new ExecHelper(this.getLog()).waitForExit(timeout, builder);
+    endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+    return new ExecHelper(this.getLog()).waitForExit(endTime, builder);
   }
 
   String postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {

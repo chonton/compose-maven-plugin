@@ -12,6 +12,11 @@ class DurationParserTest {
   }
 
   @Test
+  void parseSeconds() {
+    Assertions.assertEquals(Duration.ofSeconds(5), DurationParser.parse("5s"));
+  }
+
+  @Test
   void parseNegativeWithFraction() {
     Assertions.assertEquals(Duration.ofMinutes(-90), DurationParser.parse("-1.5h"));
   }

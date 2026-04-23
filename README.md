@@ -132,12 +132,14 @@ GID, the numeric group id of the current user.
 |               cli | `docker-compose`      | compose.cli               | Name of compose cli                      |
 |               env |                       |                           | Map of compose environment variables     |
 |              logs | target/container-logs | compose.logs              | Directory for failed container logs      |
+|     noHealthCheck | false                 | compose.noHealthCheck     | Skip checking health after startup       |
 |              skip | false                 | compose.skip              | Skip execution                           |
 |           timeout | 30                    | compose.timeout           | Number of seconds to wait for completion |
 
-Once `docker-compose` command has returned, the plugin will check the health of each service. If any defined condition
-is not healthy, the plugin will fail the build. If `allServiceHealthy` is false, `service_started` conditions with
-downstream are services are ignored. Startup traces will be collected in the **target/compose-startup** directory.
+Once `docker-compose` command has returned, the plugin will check the health of each service, unless `noHealthCheck` is
+true. If any defined condition is not healthy, the plugin will fail the build. If `allServiceHealthy` is false,
+`service_started` conditions with downstream services are ignored. Startup traces will be collected in the
+**target/compose-startup** directory.
 
 Once health conditions are satisfied, the plugin will set maven user properties for each allocated port. After user
 properties for ports are set, alias user properties are evaluated. For each alias, the alias value is interpolated. The

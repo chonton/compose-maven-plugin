@@ -119,9 +119,8 @@ public class ExecHelper {
     }
   }
 
-  private String waitForResult(int secondsToWait) {
-    long timeToGo = TimeUnit.SECONDS.toMillis(secondsToWait);
-    long endTime = System.currentTimeMillis() + timeToGo;
+  private String waitForResult(long endTime) {
+    long timeToGo = endTime - System.currentTimeMillis();
     try {
       do {
         Future<Object> poll = completionService.poll(timeToGo, TimeUnit.MILLISECONDS);
@@ -139,24 +138,24 @@ public class ExecHelper {
     }
   }
 
-  public String outputAsString(int secondsToWait, CommandBuilder builder) {
+  public String outputAsString(long endTime, CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
     Sink consumer = l -> sb.append(l).append('\n');
-    outputToConsumer(secondsToWait, consumer, builder);
+    outputToConsumer(endTime, consumer, builder);
     return sb.toString();
   }
 
-  public void outputToConsumer(int secondsToWait, Sink consumer, CommandBuilder builder) {
+  public void outputToConsumer(long endTime, Sink consumer, CommandBuilder builder) {
     createProcess(builder, consumer, errorLine);
-    String message = waitForResult(secondsToWait);
+    String message = waitForResult(endTime);
     if (message != null) {
       throw new IllegalStateException(message);
     }
   }
 
-  public String waitForExit(int secondsToWait, CommandBuilder builder) {
+  public String waitForExit(long endTime, CommandBuilder builder) {
     createProcess(builder, null, errorLine);
-    return waitForResult(secondsToWait);
+    return waitForResult(endTime);
   }
 
   @FunctionalInterface

@@ -68,7 +68,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
       builder.addOption("--all");
     }
 
-    String allServices = new ExecHelper(getLog()).outputAsString(timeout, builder).trim();
+    String allServices = new ExecHelper(getLog()).outputAsString(endTime, builder).trim();
     return allServices.isEmpty() ? null : allServices.split("\\s+");
   }
 
@@ -93,7 +93,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
                 throw new UncheckedIOException(e);
               }
             };
-        new ExecHelper(getLog()).outputToConsumer(timeout, consumer, builder);
+        new ExecHelper(getLog()).outputToConsumer(endTime, consumer, builder);
       }
     }
   }
