@@ -187,6 +187,7 @@ public class ComposeUp extends ComposeLogsGoal {
       List<String> failedHealthChecks = checkHealth();
       if (!failedHealthChecks.isEmpty() && exitMessage == null) {
         exitMessage = "Health checks failed for services " + failedHealthChecks;
+        saveServiceLogs();
       }
     }
 
