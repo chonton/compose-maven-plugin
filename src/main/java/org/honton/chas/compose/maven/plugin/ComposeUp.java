@@ -355,7 +355,7 @@ public class ComposeUp extends ComposeLogsGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port = new ExecHelper(this.getLog()).outputAsString(endTime, builder).strip();
+    String port = new ExecHelper(this.getLog()).outputAsString(builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     userProperties.put(portInfo.getProperty(), port);

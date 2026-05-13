@@ -138,16 +138,15 @@ public class ExecHelper {
     }
   }
 
-  public String outputAsString(long endTime, CommandBuilder builder) {
+  public String outputAsString(CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    Sink consumer = l -> sb.append(l).append('\n');
-    outputToConsumer(endTime, consumer, builder);
+    outputToConsumer(l -> sb.append(l).append('\n'), builder);
     return sb.toString();
   }
 
-  public void outputToConsumer(long endTime, Sink consumer, CommandBuilder builder) {
+  public void outputToConsumer(Sink consumer, CommandBuilder builder) {
     createProcess(builder, consumer, errorLine);
-    String message = waitForResult(endTime);
+    String message = waitForResult(System.currentTimeMillis() + 15_000L);
     if (message != null) {
       throw new IllegalStateException(message);
     }
