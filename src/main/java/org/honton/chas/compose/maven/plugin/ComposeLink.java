@@ -56,7 +56,7 @@ public class ComposeLink extends ComposeProjectGoal {
   private final Set<String> hostMounts = new HashSet<>();
   private final Map<String, PortInfo> variablePorts = new HashMap<>();
 
-  /** Dependencies in `Group:Artifact:Version` or `Group:Artifact::Classifier:Version` form */
+  /** Dependency list in 'Group:Artifact:Version' or 'Group:Artifact::Classifier:Version' form */
   @Parameter List<String> dependencies;
 
   /** Interpolate compose configuration with values from maven build properties */

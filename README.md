@@ -180,7 +180,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.20</version>
+        <version>0.0.25</version>
       </plugin>
     </plugins>
   </pluginManagement>

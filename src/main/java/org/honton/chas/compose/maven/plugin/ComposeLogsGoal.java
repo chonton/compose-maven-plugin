@@ -18,6 +18,7 @@ import org.yaml.snakeyaml.Yaml;
 
 public abstract class ComposeLogsGoal extends ComposeProjectGoal {
 
+  /** Directory for container logs */
   @Parameter(
       property = "compose.logs",
       defaultValue = "${project.build.directory}/compose-logs",

@@ -16,7 +16,7 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
   @Parameter(property = "compose.project", defaultValue = "${project.artifactId}", required = true)
   String project;
 
-  /** docker compose command line interface */
+  /** Docker compose CLI executable */
   @Parameter(property = "compose.cli", defaultValue = "docker-compose")
   String cli;
 
