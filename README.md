@@ -104,7 +104,6 @@ set to **target/compose**. The linked application file is saved as **target/comp
 |      project | ${project.artifactId} | compose.project | Compose project name                             |
 |         skip | false                 | compose.skip    | Skip execution                                   |
 |       source | src/main/compose      | compose.source  | Location of compose files                        |
-|      timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
 
 Dependencies may be specified in two different forms: `Group:Artifact:Version` or `Group:Artifact::Classifier:Version`.
 If using the first form, the classifier defaults to `compose`. Dependencies is a list of strings, each element may
@@ -134,7 +133,8 @@ GID, the numeric group id of the current user.
 |              logs | target/container-logs | compose.logs              | Directory for failed container logs      |
 |     noHealthCheck | false                 | compose.noHealthCheck     | Skip checking health after startup       |
 |              skip | false                 | compose.skip              | Skip execution                           |
-|           timeout | 30                    | compose.timeout           | Number of seconds to wait for completion |
+|       pullTimeout | 180                   | compose.pullTimeout       | Number of seconds to wait for pull       |
+|           timeout | 90                    | compose.timeout           | Number of seconds to wait for completion |
 
 Once `docker-compose` command has returned, the plugin will check the health of each service, unless `noHealthCheck` is
 true. If any defined condition is not healthy, the plugin will fail the build. If `allServiceHealthy` is false,
@@ -161,7 +161,7 @@ Maven user property created by the `up` goal are removed.
 |       cli | `docker-compose`      | compose.cli     | Name of compose cli                              |
 |      logs | target/container-logs | compose.logs    | Directory for container logs                     |
 |      skip | false                 | compose.skip    | Skip execution                                   |
-|   timeout | 30                    | compose.timeout | Number of seconds to wait for compose completion |
+|   timeout | 90                    | compose.timeout | Number of seconds to wait for compose completion |
 
 ### Container logs
 
@@ -180,7 +180,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.25</version>
+        <version>0.0.26</version>
       </plugin>
     </plugins>
   </pluginManagement>

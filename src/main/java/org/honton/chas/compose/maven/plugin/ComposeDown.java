@@ -54,11 +54,11 @@ public class ComposeDown extends ComposeLogsGoal {
 
     // compose down will remove containers and networks
     CommandBuilder builder =
-        createBuilder("down")
-            .addFile(COMPOSE_YAML)
-            .addOption("--remove-orphans")
-            .addOption("--volumes");
-    executeComposeCommand(builder);
+        createBuilder("down").addOption("--remove-orphans").addOption("--volumes");
+    String downMessage = executeComposeCommand(builder);
+    if (exitMessage == null) {
+      exitMessage = downMessage;
+    }
 
     return exitMessage;
   }

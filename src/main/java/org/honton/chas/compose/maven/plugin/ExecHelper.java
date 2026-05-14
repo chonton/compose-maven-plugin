@@ -64,7 +64,7 @@ public class ExecHelper {
     completionService = new ExecutorCompletionService<>(Executors.newWorkStealingPool(3));
   }
 
-  void createProcess(CommandBuilder builder, Sink stdout, Sink stderr) {
+  private void createProcess(CommandBuilder builder, Sink stdout, Sink stderr) {
     try {
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -140,16 +140,16 @@ public class ExecHelper {
 
   public String outputAsString(CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    outputToConsumer(l -> sb.append(l).append('\n'), builder);
-    return sb.toString();
-  }
-
-  public void outputToConsumer(Sink consumer, CommandBuilder builder) {
-    createProcess(builder, consumer, errorLine);
-    String message = waitForResult(System.currentTimeMillis() + 15_000L);
+    String message = outputToConsumer(l -> sb.append(l).append('\n'), builder);
     if (message != null) {
       throw new IllegalStateException(message);
     }
+    return sb.toString();
+  }
+
+  public String outputToConsumer(Sink consumer, CommandBuilder builder) {
+    createProcess(builder, consumer, errorLine);
+    return waitForResult(System.currentTimeMillis() + 15_000L);
   }
 
   public String waitForExit(long endTime, CommandBuilder builder) {

@@ -67,6 +67,10 @@ public class ComposeUp extends ComposeLogsGoal {
    */
   @Parameter Map<String, String> alias;
 
+  /** Number of seconds to wait for pulling images */
+  @Parameter(property = "compose.pullTimeout", defaultValue = "180")
+  public int pullTimeout;
+
   private Path startupPath;
 
   @Inject
@@ -97,13 +101,19 @@ public class ComposeUp extends ComposeLogsGoal {
       createEnvFile(allEnv);
       builder.addGlobalOption("--env-file", DOT_ENV);
     }
-    builder
-        .addFile(COMPOSE_YAML)
-        .addOption("--detach")
-        .addOption("--renew-anon-volumes")
-        .addOption("--remove-orphans")
-        .addOption("--quiet-pull");
+    builder.addOption("--detach").addOption("--renew-anon-volumes").addOption("--remove-orphans");
+
+    pullImages();
     return true;
+  }
+
+  private void pullImages() throws MojoExecutionException {
+    CommandBuilder builder = createBuilder("pull").addOption("--quiet");
+    long pullEndTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(pullTimeout);
+    String message = new ExecHelper(getLog()).waitForExit(pullEndTime, builder);
+    if (message != null) {
+      throw new MojoExecutionException(message);
+    }
   }
 
   private Map<String, String> getUnixEnv() {

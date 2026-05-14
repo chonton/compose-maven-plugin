@@ -63,8 +63,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   }
 
   String[] getServices(boolean all) {
-    CommandBuilder builder =
-        createBuilder("ps").addFile(COMPOSE_YAML).addOption("--format", "{{.Service}}");
+    CommandBuilder builder = createBuilder("ps").addOption("--format", "{{.Service}}");
     if (all) {
       builder.addOption("--all");
     }
@@ -94,7 +93,10 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
                 throw new UncheckedIOException(e);
               }
             };
-        new ExecHelper(getLog()).outputToConsumer(consumer, builder);
+        String message = new ExecHelper(getLog()).outputToConsumer(consumer, builder);
+        if (message != null) {
+          getLog().warn(message + " while saving logs for service " + service);
+        }
       }
     }
   }
