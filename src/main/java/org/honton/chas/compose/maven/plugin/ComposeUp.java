@@ -69,7 +69,7 @@ public class ComposeUp extends ComposeLogsGoal {
 
   /** Number of seconds to wait for pulling images */
   @Parameter(property = "compose.pullTimeout", defaultValue = "180")
-  public int pullTimeout;
+  int pullTimeout;
 
   private Path startupPath;
 
@@ -190,29 +190,28 @@ public class ComposeUp extends ComposeLogsGoal {
     // if compose up failed, save logs
     if (exitMessage != null) {
       saveServiceLogs();
+      return exitMessage;
     }
 
     if (!noHealthCheck) {
       // check health
       List<String> failedHealthChecks = checkHealth();
-      if (!failedHealthChecks.isEmpty() && exitMessage == null) {
-        exitMessage = "Health checks failed for services " + failedHealthChecks;
+      if (!failedHealthChecks.isEmpty()) {
         saveServiceLogs();
+        return "Health checks failed for services " + failedHealthChecks;
       }
     }
 
     // if success, assign maven variables
-    if (exitMessage == null) {
-      portInfos.forEach(this::assignMavenVariable);
-      if (alias != null) {
-        try {
-          interpolateAliases();
-        } catch (InterpolationException e) {
-          throw new MojoExecutionException(e);
-        }
+    portInfos.forEach(this::assignMavenVariable);
+    if (alias != null) {
+      try {
+        interpolateAliases();
+      } catch (InterpolationException e) {
+        throw new MojoExecutionException(e);
       }
     }
-    return exitMessage;
+    return null;
   }
 
   private List<String> checkHealth() throws MojoExecutionException, IOException {
@@ -279,45 +278,52 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private List<String> runChecks(Map<String, HealthCheck> checks) throws MojoExecutionException {
-    List<String> failedHealthChecks = new ArrayList<>();
     ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
     try {
-      BlockingQueue<Future<HealthCheck>> completionQueue = new LinkedBlockingQueue<>();
-      checks.forEach(
-          (name, hc) -> completionQueue.add(hc.submit(executor, this::executeHealthCheck)));
-
-      while (!checks.isEmpty()) {
-        try {
-          long timeToGo = endTime - System.currentTimeMillis();
-          if (timeToGo <= 0) {
-            throw new MojoExecutionException("Timeout waiting for health checks to complete");
-          }
-          Future<HealthCheck> future = completionQueue.poll(timeToGo, TimeUnit.MILLISECONDS);
-          if (future == null) {
-            throw new MojoExecutionException("Timeout waiting for health checks to complete");
-          }
-          HealthCheck healthCheck = future.get();
-          getLog().debug(System.currentTimeMillis() + ": " + healthCheck);
-
-          if (healthCheck.getHealthy() == null) {
-            completionQueue.add(healthCheck.submit(executor, this::executeHealthCheck));
-          } else {
-            checks.remove(healthCheck.getServiceName());
-            if (healthCheck.getHealthy() == Boolean.TRUE) {
-              getLog().info("Container " + healthCheck.getServiceName() + " Healthy");
-            } else {
-              failedHealthChecks.add(healthCheck.getServiceName());
-            }
-          }
-        } catch (InterruptedException ie) {
-          Thread.currentThread().interrupt();
-          throw new MojoExecutionException(ie);
-        } catch (ExecutionException ee) {
-          throw new MojoExecutionException(ee.getCause());
-        }
-      }
+      return runChecksProtected(checks, executor);
+    } catch (InterruptedException ie) {
+      Thread.currentThread().interrupt();
+      throw new MojoExecutionException(ie);
+    } catch (ExecutionException ee) {
+      throw new MojoExecutionException(ee.getCause());
     } finally {
       executor.shutdown();
+    }
+  }
+
+  private List<String> runChecksProtected(
+      Map<String, HealthCheck> checks, ScheduledExecutorService executor)
+      throws InterruptedException, ExecutionException {
+    BlockingQueue<Future<HealthCheck>> completionQueue = new LinkedBlockingQueue<>();
+    List<String> failedHealthChecks = new ArrayList<>();
+
+    // prime health checks
+    checks.forEach(
+        (name, hc) -> completionQueue.add(hc.submit(executor, this::executeHealthCheck)));
+
+    while (!checks.isEmpty()) {
+      long waitTime = endTime - System.currentTimeMillis();
+      if (waitTime <= 0) {
+        failedHealthChecks.addAll(checks.keySet());
+        break;
+      }
+
+      Future<HealthCheck> future = completionQueue.poll(waitTime, TimeUnit.MILLISECONDS);
+      if (future != null) {
+        HealthCheck healthCheck = future.get();
+        getLog().debug(System.currentTimeMillis() + ": " + healthCheck);
+
+        if (healthCheck.getHealthy() == null) {
+          completionQueue.add(healthCheck.submit(executor, this::executeHealthCheck));
+        } else {
+          checks.remove(healthCheck.getServiceName());
+          if (healthCheck.getHealthy() == Boolean.TRUE) {
+            getLog().info("Container " + healthCheck.getServiceName() + " Healthy");
+          } else {
+            failedHealthChecks.add(healthCheck.getServiceName());
+          }
+        }
+      }
     }
     return failedHealthChecks;
   }
