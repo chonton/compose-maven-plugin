@@ -19,9 +19,9 @@ public class CommandBuilder {
     options.add(subCommand);
   }
 
-  public CommandBuilder addGlobalOption(String optionKey, String optionValue) {
-    globalOptions.add(optionKey);
-    globalOptions.add(optionValue);
+  public CommandBuilder addGlobalOption(String key, String value) {
+    globalOptions.add(key);
+    globalOptions.add(value);
     return this;
   }
 
@@ -30,14 +30,14 @@ public class CommandBuilder {
     return this;
   }
 
-  public CommandBuilder addOption(String optionKey) {
-    options.add(optionKey);
+  public CommandBuilder addOption(String option) {
+    options.add(option);
     return this;
   }
 
-  public CommandBuilder addOption(String optionKey, String optionValue) {
-    options.add(optionKey);
-    options.add(optionValue);
+  public CommandBuilder addOption(String key, String value) {
+    options.add(key);
+    options.add(value);
     return this;
   }
 

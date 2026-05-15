@@ -108,7 +108,7 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void pullImages() throws MojoExecutionException {
-    CommandBuilder builder = createBuilder("pull").addOption("--quiet");
+    CommandBuilder builder = createBuilder("up").addOption("--quiet-pull").addOption("--no-start");
     long pullEndTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(pullTimeout);
     String message = new ExecHelper(getLog()).waitForExit(pullEndTime, builder);
     if (message != null) {
