@@ -288,13 +288,10 @@ public class ComposeUp extends ComposeLogsGoal {
 
       while (!checks.isEmpty()) {
         try {
-          long timeToGo = endTime - System.currentTimeMillis();
-          if (timeToGo <= 0) {
-            throw new MojoExecutionException("Timeout waiting for health checks to complete");
-          }
-          Future<HealthCheck> future = completionQueue.poll(timeToGo, TimeUnit.MILLISECONDS);
+          long waitTime = Math.max(1, endTime - System.currentTimeMillis());
+          Future<HealthCheck> future = completionQueue.poll(waitTime, TimeUnit.MILLISECONDS);
           if (future == null) {
-            throw new MojoExecutionException("Timeout waiting for health checks to complete");
+            break;
           }
           HealthCheck healthCheck = future.get();
           getLog().debug(System.currentTimeMillis() + ": " + healthCheck);
@@ -319,6 +316,8 @@ public class ComposeUp extends ComposeLogsGoal {
     } finally {
       executor.shutdown();
     }
+
+    failedHealthChecks.addAll(checks.keySet());
     return failedHealthChecks;
   }
 
