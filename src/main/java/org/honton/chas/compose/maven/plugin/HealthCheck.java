@@ -15,6 +15,7 @@ import org.honton.chas.compose.maven.plugin.duration.DurationParser;
 @Data
 @Accessors(chain = true)
 public class HealthCheck {
+
   private static final long DEFAULT_DURATION = TimeUnit.SECONDS.toMillis(30);
   private static final long DEFAULT_INTERVAL = TimeUnit.SECONDS.toMillis(5);
   private static final int DEFAULT_RETRIES = 3;
@@ -151,14 +152,22 @@ public class HealthCheck {
   HealthCheck executeCmd(CmdLineRunner runner) throws IOException {
     Process process = runner.run(this);
     try {
-      if (process.waitFor(timeout, TimeUnit.MILLISECONDS) && process.exitValue() == 0) {
-        synchronized (this) {
-          healthy = Boolean.TRUE;
+      if (process.waitFor(timeout, TimeUnit.MILLISECONDS)) {
+        // health check completed within timeout
+        if (process.exitValue() == 0) {
+          synchronized (this) {
+            healthy = Boolean.TRUE;
+          }
         }
+      } else {
+        // health check too long
+        synchronized (this) {
+          healthy = Boolean.FALSE;
+        }
+        process.destroyForcibly();
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      healthy = Boolean.FALSE;
     }
     return this;
   }

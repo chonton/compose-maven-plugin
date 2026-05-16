@@ -92,7 +92,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
                 throw new UncheckedIOException(e);
               }
             };
-        String message = new ExecHelper(getLog()).outputToConsumer(consumer, builder);
+        String message = new ExecHelper(getLog()).outputToConsumer(builder, consumer);
         if (message != null) {
           getLog().warn(message + " while saving logs for service " + service);
         }

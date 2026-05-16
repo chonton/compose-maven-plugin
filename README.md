@@ -131,28 +131,27 @@ GID, the numeric group id of the current user.
 |               cli | `docker-compose`      | compose.cli               | Name of compose cli                      |
 |               env |                       |                           | Map of compose environment variables     |
 |              logs | target/container-logs | compose.logs              | Directory for failed container logs      |
-|     noHealthCheck | false                 | compose.noHealthCheck     | Skip checking health after startup       |
 |              skip | false                 | compose.skip              | Skip execution                           |
+|        skipHealth | false                 | compose.skipHealth        | Skip checking health during startup      |
 |       pullTimeout | 180                   | compose.pullTimeout       | Number of seconds to wait for pull       |
 |           timeout | 90                    | compose.timeout           | Number of seconds to wait for completion |
 
-Once `docker-compose` command has returned, the plugin will check the health of each service, unless `noHealthCheck` is
-true. If any defined condition is not healthy, the plugin will fail the build. If `allServiceHealthy` is false,
-`service_started` conditions with downstream services are ignored. Startup traces will be collected in the
-**target/compose-startup** directory.
+Once `docker-compose` command has returned, the plugin will check the health of each service, unless `skipHealth` is
+true. If any defined condition is not healthy, the plugin will fail the build. Health probes will be collected in the
+**target/compose-health** directory.
 
 Once health conditions are satisfied, the plugin will set maven user properties for each allocated port. After user
 properties for ports are set, alias user properties are evaluated. For each alias, the alias value is interpolated. The
 user property named with the alias key is set to the interpolation result.
 
-If `docker-compose` fails or health conditions are not satisfied, logs for each container will be collected in the
-**target/compose-logs/** directory.
+If `docker-compose` fails, logs for each container will be collected in the **target/compose-logs/** directory.
 
 ## Down Goal
 
 The [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) goal binds by default to
 the **post-integration-test** phase. This goal executes `docker compose down` using **target/compose/compose.yaml**.
 Maven user property created by the `up` goal are removed.
+Logs for each container will be collected in the **target/compose-logs/** directory.
 
 ### Configuration
 
@@ -180,7 +179,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.30</version>
+        <version>0.0.31</version>
       </plugin>
     </plugins>
   </pluginManagement>

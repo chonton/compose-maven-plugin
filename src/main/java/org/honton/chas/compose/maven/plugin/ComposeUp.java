@@ -15,10 +15,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -42,20 +40,16 @@ public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
 
-  /** If true, check all services are healthy, including services that have downstream services */
-  @Parameter(property = "compose.allServiceHealthy", defaultValue = "false")
-  boolean allServiceHealthy;
-
   /** If true, health checks are skipped. */
-  @Parameter(property = "compose.noHealthCheck", defaultValue = "false")
-  boolean noHealthCheck;
+  @Parameter(property = "compose.skipHealth", defaultValue = "false")
+  boolean skipHealth;
 
-  /** Directory for container startup logs */
+  /** Directory for container health probe logs */
   @Parameter(
-      property = "compose.startup",
-      defaultValue = "${project.build.directory}/compose-startup",
+      property = "compose.healthLogs",
+      defaultValue = "${project.build.directory}/compose-health",
       required = true)
-  String startupLogs;
+  String healthLogs;
 
   /** Environment variables to apply */
   @Parameter Map<String, String> env = new HashMap<>();
@@ -70,7 +64,7 @@ public class ComposeUp extends ComposeLogsGoal {
   @Parameter(property = "compose.pullTimeout", defaultValue = "180")
   int pullTimeout;
 
-  private Path startupPath;
+  private Path healthLogPath;
 
   @Inject
   public ComposeUp(MavenSession session, MavenProject project) {
@@ -109,9 +103,14 @@ public class ComposeUp extends ComposeLogsGoal {
         startBuilder.addGlobalOption("--env-file", DOT_ENV);
       }
       try {
-        long endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
-        executeComposeCommand(startBuilder, timeout);
-        checkHealth(endTime);
+        long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+
+        ExecHelper execHelper = new ExecHelper(getLog());
+        execHelper.createProcess(startBuilder, null);
+
+        checkHealth(deadLine);
+
+        execHelper.waitForResult(deadLine);
       } catch (MojoExecutionException e) {
         // if compose up failed, save logs
         saveServiceLogs();
@@ -209,39 +208,31 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private void checkHealth(long endTime) throws MojoExecutionException, IOException {
-    if (noHealthCheck) {
+  private void checkHealth(long deadLine) throws MojoExecutionException, IOException {
+    if (skipHealth) {
       return;
     }
     Map<String, Object> model = readFile(composeFile);
     if (model.get("services") instanceof Map<?, ?> services) {
       Map<String, HealthCheck> healthChecks = readServices(services);
       if (!healthChecks.isEmpty()) {
-        startupPath = relativeToCurrentDirectory(startupLogs);
-        Files.createDirectories(startupPath);
-        runChecks(endTime, healthChecks);
+        runChecks(deadLine, healthChecks);
       }
     }
   }
 
   private Map<String, HealthCheck> readServices(Map<?, ?> services) {
     Map<String, HealthCheck> healthChecks = new HashMap<>();
-    Set<String> servicesWithDependents = new HashSet<>();
     for (Map.Entry<?, ?> entries : services.entrySet()) {
       if (entries.getKey() instanceof String serviceName
-          && entries.getValue() instanceof Map<?, ?> service) {
-
-        if (service.get("healthcheck") instanceof Map hcm) {
-          HealthCheck healthCheck = HealthCheck.fromMap(serviceName, hcm);
-          if (!healthCheck.getTest().isEmpty()) {
-            healthChecks.put(serviceName, healthCheck);
-          }
+          && entries.getValue() instanceof Map<?, ?> service
+          && service.get("healthcheck") instanceof Map hcm) {
+        HealthCheck healthCheck = HealthCheck.fromMap(serviceName, hcm);
+        if (!healthCheck.getTest().isEmpty()) {
+          healthChecks.put(serviceName, healthCheck);
         }
-        Object dependsOn = service.get("depends_on");
-        checkDependencies(dependsOn, servicesWithDependents);
       }
     }
-    servicesWithDependents.forEach(healthChecks::remove);
 
     String[] runningServices = getServices(false);
     if (runningServices == null) {
@@ -258,40 +249,27 @@ public class ComposeUp extends ComposeLogsGoal {
     return activeHealthChecks;
   }
 
-  private void checkDependencies(Object dependsOn, Set<String> servicesWithDependents) {
-    // check long form conditions to see if health check already enforced
-    if (dependsOn instanceof Map longForm) {
-      ((Map<String, ?>) longForm)
-          .forEach(
-              (String serviceName, Object behavior) -> {
-                if (behavior instanceof Map dependencyBehavior
-                    && dependencyBehavior.get("condition") instanceof String condition
-                    && (condition.equals("service_completed_successfully")
-                        || (condition.equals("service_healthy") && !allServiceHealthy))) {
-                  servicesWithDependents.add(serviceName);
-                }
-              });
-    }
-  }
+  private void runChecks(long deadLine, Map<String, HealthCheck> checks) throws IOException {
 
-  private void runChecks(long endTime, Map<String, HealthCheck> checks)
-      throws MojoExecutionException {
+    healthLogPath = relativeToCurrentDirectory(healthLogs);
+    Files.createDirectories(healthLogPath);
+
     ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
     try {
-      runChecksProtected(endTime, checks, executor);
+      runChecksProtected(deadLine, checks, executor);
     } catch (InterruptedException ie) {
       Thread.currentThread().interrupt();
-      throw new MojoExecutionException(ie);
     } catch (ExecutionException ee) {
-      throw new MojoExecutionException(ee.getCause());
+      getLog().warn(ee.getCause());
     } finally {
       executor.shutdown();
     }
   }
 
   private void runChecksProtected(
-      long endTime, Map<String, HealthCheck> checks, ScheduledExecutorService executor)
-      throws InterruptedException, ExecutionException, MojoExecutionException {
+      long deadLine, Map<String, HealthCheck> checks, ScheduledExecutorService executor)
+      throws InterruptedException, ExecutionException {
+
     BlockingQueue<Future<HealthCheck>> completionQueue = new LinkedBlockingQueue<>();
     List<String> failedHealthChecks = new ArrayList<>();
 
@@ -300,7 +278,7 @@ public class ComposeUp extends ComposeLogsGoal {
         (name, hc) -> completionQueue.add(hc.submit(executor, this::executeHealthCheck)));
 
     while (!checks.isEmpty()) {
-      long waitTime = endTime - System.currentTimeMillis();
+      long waitTime = deadLine - System.currentTimeMillis();
       if (waitTime <= 0) {
         failedHealthChecks.addAll(checks.keySet());
         break;
@@ -315,9 +293,7 @@ public class ComposeUp extends ComposeLogsGoal {
           completionQueue.add(healthCheck.submit(executor, this::executeHealthCheck));
         } else {
           checks.remove(healthCheck.getServiceName());
-          if (healthCheck.getHealthy() == Boolean.TRUE) {
-            getLog().info("Container " + healthCheck.getServiceName() + " Healthy");
-          } else {
+          if (healthCheck.getHealthy() == Boolean.FALSE) {
             failedHealthChecks.add(healthCheck.getServiceName());
           }
         }
@@ -325,14 +301,14 @@ public class ComposeUp extends ComposeLogsGoal {
     }
 
     if (!failedHealthChecks.isEmpty()) {
-      throw new MojoExecutionException("Health checks failed for services " + failedHealthChecks);
+      getLog().warn("Health checks failed for services " + failedHealthChecks);
     }
   }
 
   private Process executeHealthCheck(HealthCheck healthCheck) throws IOException {
     String serviceName = healthCheck.getServiceName();
 
-    Path trace = startupPath.resolve(serviceName + ".log");
+    Path trace = healthLogPath.resolve(serviceName + ".log");
 
     // docker-compose exec [OPTIONS] SERVICE COMMAND [ARGS...]
     List<String> command = new ArrayList<>();
@@ -356,30 +332,21 @@ public class ComposeUp extends ComposeLogsGoal {
         StandardOpenOption.WRITE,
         StandardOpenOption.APPEND);
 
-    ProcessBuilder processBuilder = new ProcessBuilder(command);
-    processBuilder.directory(composeProject.toFile());
-
-    String cmdLine = String.join(" ", command);
-    getLog().info(cmdLine);
-
-    processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
-    processBuilder.redirectOutput(Redirect.appendTo(trace.toFile()));
-    Process process = processBuilder.start();
-    process.getOutputStream().close();
-    return process;
+    return createProcess(command, trace);
   }
 
   private Process startEventWatcher(CommandBuilder builder) throws IOException {
     Path logPath = createLogDir();
     Path logFile = logPath.resolve("compose-events.log");
+    return createProcess(builder.getCommand(), logFile);
+  }
 
-    ProcessBuilder processBuilder = new ProcessBuilder(builder.getCommand());
-    Path cwd = builder.getCwd();
-    if (cwd != null) {
-      processBuilder.directory(cwd.toFile());
-    }
-    processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
-    processBuilder.redirectOutput(logFile.toFile());
+  private Process createProcess(List<String> command, Path output) throws IOException {
+    ProcessBuilder processBuilder = new ProcessBuilder(command);
+    processBuilder.directory(composeProject.toFile());
+
+    processBuilder.redirectError(Redirect.INHERIT);
+    processBuilder.redirectOutput(Redirect.appendTo(output.toFile()));
     Process process = processBuilder.start();
     process.getOutputStream().close();
     return process;

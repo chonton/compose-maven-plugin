@@ -47,11 +47,8 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
 
   final void executeComposeCommand(CommandBuilder builder, long timeout)
       throws MojoExecutionException {
-    long endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
-    String message = new ExecHelper(getLog()).waitForExit(endTime, builder);
-    if (message != null) {
-      throw new MojoExecutionException(message);
-    }
+    long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+    new ExecHelper(getLog()).waitForExit(builder, deadLine);
   }
 
   final Path relativeToCurrentDirectory(String dir) {

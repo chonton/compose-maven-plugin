@@ -14,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 
 public class ExecHelper {
@@ -64,7 +65,7 @@ public class ExecHelper {
     completionService = new ExecutorCompletionService<>(Executors.newWorkStealingPool(3));
   }
 
-  private void createProcess(CommandBuilder builder, Sink stdout, Sink stderr) {
+  void createProcess(CommandBuilder builder, Sink stdout) {
     try {
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -79,12 +80,9 @@ public class ExecHelper {
       } else {
         debugLine.accept(cmdLine);
       }
-      if (stderr == null) {
-        processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
-      }
       Process process = processBuilder.start();
       startPump(process.getInputStream(), stdout);
-      startPump(process.getErrorStream(), stderr);
+      startPump(process.getErrorStream(), errorLine);
       completionService.submit(process::waitFor);
       process.getOutputStream().close();
     } catch (IOException ex) {
@@ -92,10 +90,8 @@ public class ExecHelper {
     }
   }
 
-  private void startPump(InputStream process, Sink std) {
-    if (process != null) {
-      completionService.submit(() -> pumpLog(process, std));
-    }
+  private void startPump(InputStream stream, Sink sink) {
+    completionService.submit(() -> pumpLog(stream, sink));
   }
 
   private String pumpLog(InputStream is, Sink lineConsumer) throws IOException {
@@ -119,8 +115,8 @@ public class ExecHelper {
     }
   }
 
-  private String waitForResult(long endTime) {
-    long timeToGo = endTime - System.currentTimeMillis();
+  String waitForResult(long deadLine) {
+    long timeToGo = Math.max(1L, deadLine - System.currentTimeMillis());
     try {
       do {
         Future<Object> poll = completionService.poll(timeToGo, TimeUnit.MILLISECONDS);
@@ -130,7 +126,7 @@ public class ExecHelper {
             return exit != 0 ? "command exited with code " + exit : null;
           }
         }
-        timeToGo = endTime - System.currentTimeMillis();
+        timeToGo = deadLine - System.currentTimeMillis();
       } while (timeToGo > 0);
       return "timed out";
     } catch (InterruptedException | ExecutionException ex) {
@@ -140,26 +136,28 @@ public class ExecHelper {
 
   public String outputAsString(CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    String message = outputToConsumer(l -> sb.append(l).append('\n'), builder);
+    String message = outputToConsumer(builder, l -> sb.append(l).append('\n'));
     if (message != null) {
       throw new IllegalStateException(message);
     }
     return sb.toString();
   }
 
-  public String outputToConsumer(Sink consumer, CommandBuilder builder) {
-    createProcess(builder, consumer, errorLine);
+  public String outputToConsumer(CommandBuilder builder, Sink consumer) {
+    createProcess(builder, consumer);
     return waitForResult(System.currentTimeMillis() + 15_000L);
   }
 
-  public String waitForExit(long endTime, CommandBuilder builder) {
-    createProcess(builder, null, errorLine);
-    return waitForResult(endTime);
+  public void waitForExit(CommandBuilder builder, long deadLine) throws MojoExecutionException {
+    createProcess(builder, null);
+    String message = waitForResult(deadLine);
+    if (message != null) {
+      throw new MojoExecutionException(message);
+    }
   }
 
   @FunctionalInterface
   public interface Sink {
-
     void accept(CharSequence line) throws IOException;
   }
 }
