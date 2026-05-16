@@ -111,8 +111,14 @@ public class ComposeLink extends ComposeProjectGoal {
   }
 
   @Override
-  protected String subCommand() {
-    return "config";
+  void doCommands() throws IOException, MojoExecutionException {
+    commandBuilder = createBuilder("config");
+    if (addComposeOptions()) {
+      executeComposeCommand(commandBuilder, timeout);
+
+      writeMounts();
+      writePorts();
+    }
   }
 
   private void addDependency(String dependency)
@@ -364,10 +370,7 @@ public class ComposeLink extends ComposeProjectGoal {
     return filter ? new InterpolatorFilterReader(reader, interpolator) : reader;
   }
 
-  @Override
-  protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
-    commandBuilder = builder;
-
+  private boolean addComposeOptions() throws IOException {
     Path composeSrcPath = Path.of(source);
     artifactHelper = new ArtifactHelper(mavenProject, composeSrcPath, repoSystem, repoSession);
 
@@ -376,13 +379,13 @@ public class ComposeLink extends ComposeProjectGoal {
       artifactHelper.processComposeSrc(getLog(), this::processLocalArtifact, true);
     }
 
-    List<String> files = builder.getFiles();
+    List<String> files = commandBuilder.getFiles();
     if (files.isEmpty()) {
       getLog().info("No artifacts to link, `compose config` not executed");
       return false;
     }
 
-    builder
+    commandBuilder
         .addGlobalOption("--project-directory", ".")
         .addOption("--no-interpolate")
         .addOption("--output", COMPOSE_YAML);
@@ -396,15 +399,6 @@ public class ComposeLink extends ComposeProjectGoal {
     String namespacedPath = ArtifactHelper.namespacedPath(namespace, composeYaml);
     artifactHelper.processArtifact(
         gav, namespacedPath, () -> Files.newInputStream(composeYaml), this::processArtifact);
-  }
-
-  @Override
-  protected String postComposeCommand(String exitMessage) throws IOException {
-    if (exitMessage == null) {
-      writeMounts();
-      writePorts();
-    }
-    return exitMessage;
   }
 
   private void writeMounts() throws IOException {

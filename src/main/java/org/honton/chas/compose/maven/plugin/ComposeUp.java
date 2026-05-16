@@ -27,7 +27,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
-import lombok.SneakyThrows;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -79,40 +78,57 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   @Override
-  protected String subCommand() {
-    return "up";
-  }
-
-  @Override
-  @SneakyThrows
-  protected boolean addComposeOptions(CommandBuilder builder) {
-    if (!super.addComposeOptions(builder)) {
+  void doCommands() throws IOException, MojoExecutionException {
+    if (!readCompose()) {
       getLog().info("No linked compose file, `compose up` not executed");
-      return false;
+      return;
     }
+
     createHostSourceDirs();
     allocatePorts();
+    boolean hasEnv = createEnvFile();
 
-    Map<String, String> allEnv = getUnixEnv();
-    if (env != null) {
-      allEnv.putAll(env);
+    // pull images
+    final CommandBuilder pullBuilder =
+        createBuilder("up").addOption("--quiet-pull").addOption("--no-start");
+    if (hasEnv) {
+      pullBuilder.addGlobalOption("--env-file", DOT_ENV);
     }
-    if (!allEnv.isEmpty()) {
-      createEnvFile(allEnv);
-      builder.addGlobalOption("--env-file", DOT_ENV);
+    executeComposeCommand(pullBuilder, pullTimeout);
+
+    // watch events
+    Process watcher = startEventWatcher(createBuilder("events").addOption("--json"));
+    try {
+      // start containers
+      final CommandBuilder startBuilder =
+          createBuilder("up")
+              .addOption("--detach")
+              .addOption("--renew-anon-volumes")
+              .addOption("--remove-orphans");
+      if (hasEnv) {
+        startBuilder.addGlobalOption("--env-file", DOT_ENV);
+      }
+      try {
+        long endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+        executeComposeCommand(startBuilder, timeout);
+        checkHealth(endTime);
+      } catch (MojoExecutionException e) {
+        // if compose up failed, save logs
+        saveServiceLogs();
+        throw e;
+      }
+    } finally {
+      watcher.destroy();
     }
-    builder.addOption("--detach").addOption("--renew-anon-volumes").addOption("--remove-orphans");
 
-    pullImages();
-    return true;
-  }
-
-  private void pullImages() throws MojoExecutionException {
-    CommandBuilder builder = createBuilder("up").addOption("--quiet-pull").addOption("--no-start");
-    long pullEndTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(pullTimeout);
-    String message = new ExecHelper(getLog()).waitForExit(pullEndTime, builder);
-    if (message != null) {
-      throw new MojoExecutionException(message);
+    // if success, assign maven variables
+    portInfos.forEach(this::assignMavenVariable);
+    if (alias != null) {
+      try {
+        interpolateAliases();
+      } catch (InterpolationException e) {
+        throw new MojoExecutionException(e);
+      }
     }
   }
 
@@ -146,7 +162,15 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private void createEnvFile(Map<String, String> allEnv) throws IOException {
+  private boolean createEnvFile() throws IOException {
+    Map<String, String> allEnv = getUnixEnv();
+    if (env != null) {
+      allEnv.putAll(env);
+    }
+    if (allEnv.isEmpty()) {
+      return false;
+    }
+
     Path envFile = composeProject.resolve(DOT_ENV);
     try (Writer writer =
         Files.newBufferedWriter(
@@ -160,6 +184,7 @@ public class ComposeUp extends ComposeLogsGoal {
             }
           });
     }
+    return true;
   }
 
   private void createHostSourceDirs() throws IOException {
@@ -184,47 +209,19 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  @Override
-  protected String postComposeCommand(String exitMessage)
-      throws MojoExecutionException, IOException {
-    // if compose up failed, save logs
-    if (exitMessage != null) {
-      saveServiceLogs();
-      return exitMessage;
+  private void checkHealth(long endTime) throws MojoExecutionException, IOException {
+    if (noHealthCheck) {
+      return;
     }
-
-    if (!noHealthCheck) {
-      // check health
-      List<String> failedHealthChecks = checkHealth();
-      if (!failedHealthChecks.isEmpty()) {
-        saveServiceLogs();
-        return "Health checks failed for services " + failedHealthChecks;
-      }
-    }
-
-    // if success, assign maven variables
-    portInfos.forEach(this::assignMavenVariable);
-    if (alias != null) {
-      try {
-        interpolateAliases();
-      } catch (InterpolationException e) {
-        throw new MojoExecutionException(e);
-      }
-    }
-    return null;
-  }
-
-  private List<String> checkHealth() throws MojoExecutionException, IOException {
     Map<String, Object> model = readFile(composeFile);
     if (model.get("services") instanceof Map<?, ?> services) {
       Map<String, HealthCheck> healthChecks = readServices(services);
       if (!healthChecks.isEmpty()) {
         startupPath = relativeToCurrentDirectory(startupLogs);
         Files.createDirectories(startupPath);
-        return runChecks(healthChecks);
+        runChecks(endTime, healthChecks);
       }
     }
-    return List.of();
   }
 
   private Map<String, HealthCheck> readServices(Map<?, ?> services) {
@@ -277,10 +274,11 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private List<String> runChecks(Map<String, HealthCheck> checks) throws MojoExecutionException {
+  private void runChecks(long endTime, Map<String, HealthCheck> checks)
+      throws MojoExecutionException {
     ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
     try {
-      return runChecksProtected(checks, executor);
+      runChecksProtected(endTime, checks, executor);
     } catch (InterruptedException ie) {
       Thread.currentThread().interrupt();
       throw new MojoExecutionException(ie);
@@ -291,9 +289,9 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private List<String> runChecksProtected(
-      Map<String, HealthCheck> checks, ScheduledExecutorService executor)
-      throws InterruptedException, ExecutionException {
+  private void runChecksProtected(
+      long endTime, Map<String, HealthCheck> checks, ScheduledExecutorService executor)
+      throws InterruptedException, ExecutionException, MojoExecutionException {
     BlockingQueue<Future<HealthCheck>> completionQueue = new LinkedBlockingQueue<>();
     List<String> failedHealthChecks = new ArrayList<>();
 
@@ -325,7 +323,10 @@ public class ComposeUp extends ComposeLogsGoal {
         }
       }
     }
-    return failedHealthChecks;
+
+    if (!failedHealthChecks.isEmpty()) {
+      throw new MojoExecutionException("Health checks failed for services " + failedHealthChecks);
+    }
   }
 
   private Process executeHealthCheck(HealthCheck healthCheck) throws IOException {
@@ -363,6 +364,22 @@ public class ComposeUp extends ComposeLogsGoal {
 
     processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
     processBuilder.redirectOutput(Redirect.appendTo(trace.toFile()));
+    Process process = processBuilder.start();
+    process.getOutputStream().close();
+    return process;
+  }
+
+  private Process startEventWatcher(CommandBuilder builder) throws IOException {
+    Path logPath = createLogDir();
+    Path logFile = logPath.resolve("compose-events.log");
+
+    ProcessBuilder processBuilder = new ProcessBuilder(builder.getCommand());
+    Path cwd = builder.getCwd();
+    if (cwd != null) {
+      processBuilder.directory(cwd.toFile());
+    }
+    processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
+    processBuilder.redirectOutput(logFile.toFile());
     Process process = processBuilder.start();
     process.getOutputStream().close();
     return process;

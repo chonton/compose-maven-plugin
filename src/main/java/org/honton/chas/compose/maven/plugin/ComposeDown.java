@@ -3,6 +3,7 @@ package org.honton.chas.compose.maven.plugin;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 
@@ -11,22 +12,27 @@ import org.apache.maven.plugins.annotations.Mojo;
 public class ComposeDown extends ComposeLogsGoal {
 
   @Override
-  protected String subCommand() {
-    // stop, then collect logs, then down
-    return "stop";
-  }
-
-  @Override
-  protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
-    if (!super.addComposeOptions(builder)) {
+  void doCommands() throws IOException, MojoExecutionException {
+    if (!readCompose()) {
       getLog().info("No linked compose file, `compose down` not executed");
-      return false;
+      return;
     }
+
     removeUserProperties();
 
+    CommandBuilder builder = createBuilder("stop");
     // stop all services in linked compose file
     readServices().forEach(builder::addOption);
-    return true;
+    try {
+      executeComposeCommand(builder, timeout);
+    } finally {
+      // save logs before down
+      saveServiceLogs();
+    }
+
+    // compose down will remove containers and networks
+    builder = createBuilder("down").addOption("--remove-orphans").addOption("--volumes");
+    executeComposeCommand(builder, timeout);
   }
 
   // undoes the effects of ComposeUp.allocatePorts. if we have (composite) project with multiple
@@ -45,21 +51,5 @@ public class ComposeDown extends ComposeLogsGoal {
     Map<String, Object> composeDefinition = readFile(composeFile);
     Map<String, Object> map = (Map<String, Object>) composeDefinition.get("services");
     return map.keySet();
-  }
-
-  @Override
-  protected String postComposeCommand(String exitMessage) throws IOException {
-    // save logs before down
-    saveServiceLogs();
-
-    // compose down will remove containers and networks
-    CommandBuilder builder =
-        createBuilder("down").addOption("--remove-orphans").addOption("--volumes");
-    String downMessage = executeComposeCommand(builder);
-    if (exitMessage == null) {
-      exitMessage = downMessage;
-    }
-
-    return exitMessage;
   }
 }

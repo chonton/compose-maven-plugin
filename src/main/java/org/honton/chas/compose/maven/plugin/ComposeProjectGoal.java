@@ -29,20 +29,15 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
 
   Path composeProject;
   Path composeFile;
-  long endTime;
 
   @Override
   final void doExecute() throws IOException, MojoExecutionException {
     composeProject = Path.of(composeProjectDir);
     composeFile = composeProject.resolve(COMPOSE_YAML);
-    CommandBuilder builder = createBuilder(subCommand());
-    if (addComposeOptions(builder)) {
-      String exitMessage = postComposeCommand(executeComposeCommand(builder));
-      if (exitMessage != null) {
-        throw new MojoExecutionException(exitMessage);
-      }
-    }
+    doCommands();
   }
+
+  abstract void doCommands() throws IOException, MojoExecutionException;
 
   final CommandBuilder createBuilder(String subCommand) {
     return new CommandBuilder(cli, subCommand)
@@ -50,17 +45,13 @@ public abstract class ComposeProjectGoal extends ComposeGoal {
         .addGlobalOption("--project-name", project);
   }
 
-  abstract String subCommand();
-
-  abstract boolean addComposeOptions(CommandBuilder builder) throws IOException;
-
-  final String executeComposeCommand(CommandBuilder builder) {
-    endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
-    return new ExecHelper(this.getLog()).waitForExit(endTime, builder);
-  }
-
-  String postComposeCommand(String exitMessage) throws IOException, MojoExecutionException {
-    return exitMessage;
+  final void executeComposeCommand(CommandBuilder builder, long timeout)
+      throws MojoExecutionException {
+    long endTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+    String message = new ExecHelper(getLog()).waitForExit(endTime, builder);
+    if (message != null) {
+      throw new MojoExecutionException(message);
+    }
   }
 
   final Path relativeToCurrentDirectory(String dir) {

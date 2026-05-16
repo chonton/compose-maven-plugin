@@ -10,7 +10,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import lombok.SneakyThrows;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.honton.chas.compose.maven.plugin.ExecHelper.Sink;
 import org.honton.chas.compose.maven.plugin.yaml.ComposeConstructor;
@@ -25,16 +24,17 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
       required = true)
   String logs;
 
+  /** Number of seconds to wait for compose commands */
+  @Parameter(property = "compose.timeout", defaultValue = "90")
+  public int timeout;
+
   @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
   Properties userProperties;
 
-  protected Yaml yaml;
+  private Yaml yaml;
   protected List<PortInfo> portInfos;
 
-  protected abstract String subCommand();
-
-  @SneakyThrows
-  protected boolean addComposeOptions(CommandBuilder builder) throws IOException {
+  protected boolean readCompose() throws IOException {
     if (!Files.isReadable(composeFile)) {
       return false;
     }
@@ -73,8 +73,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   }
 
   private void saveLogs(String[] services) throws IOException {
-    Path logPath = relativeToCurrentDirectory(logs);
-    Files.createDirectories(logPath);
+    Path logPath = createLogDir();
 
     for (String service : services) {
       CommandBuilder builder =
@@ -99,5 +98,11 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
         }
       }
     }
+  }
+
+  Path createLogDir() throws IOException {
+    Path logPath = relativeToCurrentDirectory(logs);
+    Files.createDirectories(logPath);
+    return logPath;
   }
 }
