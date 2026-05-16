@@ -140,39 +140,43 @@ public class ComposeAssemble extends ComposeGoal {
       if (entries.getKey() instanceof String serviceName
           && entries.getValue() instanceof Map<?, ?> service
           && (service.containsKey("image") || service.containsKey("extends"))) {
-
-        // only services with image defined are considered
-        // otherwise the service definition is going to augment the primary definition
-        String priorCoordinates = serviceToCoordinates.put(serviceName, coordinates);
-        if (priorCoordinates != null) {
-          if (priorCoordinates.equals(coordinates)) {
-            continue;
-          }
-          getLog()
-              .error(
-                  "Service "
-                      + serviceName
-                      + " defined in "
-                      + coordinates
-                      + ", previously defined in "
-                      + priorCoordinates);
-        }
-
-        List<String> dependsOn = new ArrayList<>();
-        if (service.get("depends_on") instanceof List<?> dependsOnList) {
-          dependsOn.addAll((Collection<? extends String>) dependsOnList);
-        } else if (service.get("depends_on") instanceof Map<?, ?> dependsOnMap) {
-          dependsOn.addAll((Collection<? extends String>) dependsOnMap.keySet());
-        }
-        if (service.get("extends") instanceof Map<?, ?> serviceExtends
-            && serviceExtends.get("service") instanceof String dependentService) {
-          dependsOn.add(dependentService);
-        }
-        getLog().debug(serviceName + " depends on " + dependsOn);
-        serviceInfos.add(new ServiceInfo(serviceName, dependsOn));
+        readService(coordinates, serviceName, service, serviceInfos);
       }
     }
     return serviceInfos;
+  }
+
+  private void readService(
+      String coordinates, String serviceName, Map<?, ?> service, List<ServiceInfo> serviceInfos) {
+    // only services with image defined are considered
+    // otherwise the service definition is going to augment the primary definition
+    String priorCoordinates = serviceToCoordinates.put(serviceName, coordinates);
+    if (priorCoordinates != null) {
+      if (priorCoordinates.equals(coordinates)) {
+        return;
+      }
+      getLog()
+          .error(
+              "Service "
+                  + serviceName
+                  + " defined in "
+                  + coordinates
+                  + ", previously defined in "
+                  + priorCoordinates);
+    }
+
+    List<String> dependsOn = new ArrayList<>();
+    if (service.get("depends_on") instanceof List<?> dependsOnList) {
+      dependsOn.addAll((Collection<? extends String>) dependsOnList);
+    } else if (service.get("depends_on") instanceof Map<?, ?> dependsOnMap) {
+      dependsOn.addAll((Collection<? extends String>) dependsOnMap.keySet());
+    }
+    if (service.get("extends") instanceof Map<?, ?> serviceExtends
+        && serviceExtends.get("service") instanceof String dependentService) {
+      dependsOn.add(dependentService);
+    }
+    getLog().debug(serviceName + " depends on " + dependsOn);
+    serviceInfos.add(new ServiceInfo(serviceName, dependsOn));
   }
 
   private void writeComposeJar(String classifier, String namespace, Path composeYaml)

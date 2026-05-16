@@ -344,8 +344,8 @@ public class ComposeLink extends ComposeProjectGoal {
   private void collectHostMount(Object volume) {
     if (volume instanceof Map<?, ?> longSyntax) {
       if ("bind".equals(longSyntax.get("type"))
-          && longSyntax.get("source") instanceof String source) {
-        collectVolume(source);
+          && longSyntax.get("source") instanceof String volumeSource) {
+        collectVolume(volumeSource);
       }
     } else if (volume instanceof String shortSyntax) {
       int colonIdx = shortSyntax.indexOf(':');

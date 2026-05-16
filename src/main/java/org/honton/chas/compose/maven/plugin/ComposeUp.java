@@ -110,7 +110,7 @@ public class ComposeUp extends ComposeLogsGoal {
 
         checkHealth(deadLine);
 
-        execHelper.waitForResult(deadLine);
+        execHelper.waitForExit(deadLine);
       } catch (MojoExecutionException e) {
         // if compose up failed, save logs
         saveServiceLogs();
@@ -208,7 +208,7 @@ public class ComposeUp extends ComposeLogsGoal {
     }
   }
 
-  private void checkHealth(long deadLine) throws MojoExecutionException, IOException {
+  private void checkHealth(long deadLine) throws IOException {
     if (skipHealth) {
       return;
     }
@@ -233,20 +233,7 @@ public class ComposeUp extends ComposeLogsGoal {
         }
       }
     }
-
-    String[] runningServices = getServices(false);
-    if (runningServices == null) {
-      return Map.of();
-    }
-
-    Map<String, HealthCheck> activeHealthChecks = new HashMap<>();
-    for (String service : runningServices) {
-      HealthCheck healthCheck = healthChecks.get(service);
-      if (healthCheck != null) {
-        activeHealthChecks.put(service, healthCheck);
-      }
-    }
-    return activeHealthChecks;
+    return healthChecks;
   }
 
   private void runChecks(long deadLine, Map<String, HealthCheck> checks) throws IOException {
@@ -345,7 +332,7 @@ public class ComposeUp extends ComposeLogsGoal {
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.directory(composeProject.toFile());
 
-    processBuilder.redirectError(Redirect.INHERIT);
+    processBuilder.redirectErrorStream(true);
     processBuilder.redirectOutput(Redirect.appendTo(output.toFile()));
     Process process = processBuilder.start();
     process.getOutputStream().close();

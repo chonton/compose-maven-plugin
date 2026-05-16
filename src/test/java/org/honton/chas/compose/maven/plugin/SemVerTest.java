@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 
 class SemVerTest {
 
-  private final String[] ORDERED = {
+  private static final String[] ORDERED = {
     "1.0.0-alpha",
     "1.0.0-alpha.1",
     "1.0.0-alpha.beta",
@@ -71,8 +71,8 @@ class SemVerTest {
 
   @Test
   void nullcompareTo() {
-    Assertions.assertThrows(
-        NullPointerException.class, () -> SemVer.valueOf("2.0.0-alpha+other").compareTo(null));
+    SemVer semVer = SemVer.valueOf("2.0.0-alpha+other");
+    Assertions.assertThrows(NullPointerException.class, () -> semVer.compareTo(null));
   }
 
   @Test

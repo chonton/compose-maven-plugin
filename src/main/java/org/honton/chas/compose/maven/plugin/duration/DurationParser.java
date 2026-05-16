@@ -68,16 +68,14 @@ public class DurationParser {
         if (offset < value.length() && value.charAt(offset) == 's') {
           ++offset;
           return Shifter.NANOS_PICOS;
-        } else {
-          throw new IllegalArgumentException("Invalid duration : " + value);
         }
+        break;
       case 'u', 'µ':
         if (offset < value.length() && value.charAt(offset) == 's') {
           ++offset;
           return Shifter.MICROS_NANOS;
-        } else {
-          throw new IllegalArgumentException("Invalid duration : " + value);
         }
+        break;
       case 's':
         return Shifter.SECONDS_MILLIS;
       case 'm':
@@ -89,8 +87,9 @@ public class DurationParser {
       case 'h':
         return Shifter.HOURS_MINUTES;
       default:
-        throw new IllegalArgumentException("Invalid duration : " + value);
+        break;
     }
+    throw new IllegalArgumentException("Invalid duration : " + value);
   }
 
   private record Shifter(LongFunction<Duration> whole, DoubleFunction<Duration> fraction) {

@@ -24,10 +24,6 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
       required = true)
   String logs;
 
-  /** Number of seconds to wait for compose commands */
-  @Parameter(property = "compose.timeout", defaultValue = "90")
-  public int timeout;
-
   @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
   Properties userProperties;
 
@@ -56,18 +52,15 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   }
 
   void saveServiceLogs() throws IOException {
-    String[] allServices = getServices(true);
+    String[] allServices = getServices();
     if (allServices != null) {
       saveLogs(allServices);
     }
   }
 
-  String[] getServices(boolean all) {
-    CommandBuilder builder = createBuilder("ps").addOption("--format", "{{.Service}}");
-    if (all) {
-      builder.addOption("--all");
-    }
-
+  private String[] getServices() {
+    CommandBuilder builder =
+        createBuilder("ps").addOption("--format", "{{.Service}}").addOption("--all");
     String allServices = new ExecHelper(getLog()).outputAsString(builder).trim();
     return allServices.isEmpty() ? null : allServices.split("\\s+");
   }

@@ -76,7 +76,7 @@ public class ExecHelper {
       String cmdLine = String.join(" ", command);
       if (stdout == null) {
         infoLine.accept(cmdLine);
-        stdout = System.err::println;
+        stdout = infoLine;
       } else {
         debugLine.accept(cmdLine);
       }
@@ -115,7 +115,7 @@ public class ExecHelper {
     }
   }
 
-  String waitForResult(long deadLine) {
+  private String waitForResult(long deadLine) {
     long timeToGo = Math.max(1L, deadLine - System.currentTimeMillis());
     try {
       do {
@@ -129,7 +129,10 @@ public class ExecHelper {
         timeToGo = deadLine - System.currentTimeMillis();
       } while (timeToGo > 0);
       return "timed out";
-    } catch (InterruptedException | ExecutionException ex) {
+    } catch (InterruptedException ie) {
+      Thread.currentThread().interrupt();
+      return "interrupted";
+    } catch (ExecutionException ex) {
       throw new IllegalStateException(ex);
     }
   }
@@ -148,8 +151,12 @@ public class ExecHelper {
     return waitForResult(System.currentTimeMillis() + 15_000L);
   }
 
-  public void waitForExit(CommandBuilder builder, long deadLine) throws MojoExecutionException {
+  public void startAndWait(CommandBuilder builder, long deadLine) throws MojoExecutionException {
     createProcess(builder, null);
+    waitForExit(deadLine);
+  }
+
+  public void waitForExit(long deadLine) throws MojoExecutionException {
     String message = waitForResult(deadLine);
     if (message != null) {
       throw new MojoExecutionException(message);
