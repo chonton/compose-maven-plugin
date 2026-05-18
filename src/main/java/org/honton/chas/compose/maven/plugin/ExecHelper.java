@@ -25,47 +25,29 @@ public class ExecHelper {
   private static final Pattern ERROR =
       Pattern.compile("\\[?(error)]?:? ?(.+)", Pattern.CASE_INSENSITIVE);
 
-  private final ExecutorCompletionService<Object> completionService;
-  private final Sink debugLine;
-  private final Sink infoLine;
-  private final Sink errorLine;
+  // threads for stdout, stderr, process.waitFor()
+  private final ExecutorCompletionService<Object> completionService =
+      new ExecutorCompletionService<>(Executors.newWorkStealingPool(3));
 
-  public ExecHelper(Log log) {
-
-    debugLine =
-        lineText -> {
-          if (lineText != null) {
-            log.debug(lineText);
-          }
-        };
-    infoLine =
-        lineText -> {
-          if (lineText != null) {
+  private static Sink smartLine(Log log) {
+    return lineText -> {
+      if (lineText != null) {
+        Matcher warning = WARNING.matcher(lineText);
+        if (warning.matches()) {
+          log.warn(warning.group(2));
+        } else {
+          Matcher error = ERROR.matcher(lineText);
+          if (error.matches()) {
+            log.error(error.group(2));
+          } else {
             log.info(lineText);
           }
-        };
-    errorLine =
-        lineText -> {
-          if (lineText != null) {
-            Matcher warning = WARNING.matcher(lineText);
-            if (warning.matches()) {
-              log.warn(warning.group(2));
-            } else {
-              Matcher error = ERROR.matcher(lineText);
-              if (error.matches()) {
-                log.error(error.group(2));
-              } else {
-                log.info(lineText);
-              }
-            }
-          }
-        };
-
-    // threads for stdout, stderr, process.waitFor()
-    completionService = new ExecutorCompletionService<>(Executors.newWorkStealingPool(3));
+        }
+      }
+    };
   }
 
-  void createProcess(CommandBuilder builder, Sink stdout) {
+  void createProcess(Log log, CommandBuilder builder, Sink stdout) {
     try {
       List<String> command = builder.getCommand();
       ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -75,14 +57,17 @@ public class ExecHelper {
       }
       String cmdLine = String.join(" ", command);
       if (stdout == null) {
-        infoLine.accept(cmdLine);
-        stdout = infoLine;
-      } else {
-        debugLine.accept(cmdLine);
+        log.info(cmdLine);
+        stdout =
+            line -> {
+              if (line != null) {
+                log.info(line);
+              }
+            };
       }
       Process process = processBuilder.start();
       startPump(process.getInputStream(), stdout);
-      startPump(process.getErrorStream(), errorLine);
+      startPump(process.getErrorStream(), smartLine(log));
       completionService.submit(process::waitFor);
       process.getOutputStream().close();
     } catch (IOException ex) {
@@ -137,22 +122,23 @@ public class ExecHelper {
     }
   }
 
-  public String outputAsString(CommandBuilder builder) {
+  public String outputAsString(Log log, CommandBuilder builder) {
     StringBuilder sb = new StringBuilder();
-    String message = outputToConsumer(builder, l -> sb.append(l).append('\n'));
+    String message = outputToConsumer(log, builder, l -> sb.append(l).append('\n'));
     if (message != null) {
-      throw new IllegalStateException(message);
+      log.warn(message);
     }
     return sb.toString();
   }
 
-  public String outputToConsumer(CommandBuilder builder, Sink consumer) {
-    createProcess(builder, consumer);
+  public String outputToConsumer(Log log, CommandBuilder builder, Sink consumer) {
+    createProcess(log, builder, consumer);
     return waitForResult(System.currentTimeMillis() + 15_000L);
   }
 
-  public void startAndWait(CommandBuilder builder, long deadLine) throws MojoExecutionException {
-    createProcess(builder, null);
+  public void startAndWait(Log log, CommandBuilder builder, long deadLine)
+      throws MojoExecutionException {
+    createProcess(log, builder, null);
     waitForExit(deadLine);
   }
 
@@ -165,6 +151,6 @@ public class ExecHelper {
 
   @FunctionalInterface
   public interface Sink {
-    void accept(CharSequence line) throws IOException;
+    void accept(CharSequence line);
   }
 }

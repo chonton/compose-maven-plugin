@@ -61,7 +61,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
   private String[] getServices() {
     CommandBuilder builder =
         createBuilder("ps").addOption("--format", "{{.Service}}").addOption("--all");
-    String allServices = new ExecHelper(getLog()).outputAsString(builder).trim();
+    String allServices = new ExecHelper().outputAsString(getLog(), builder).trim();
     return allServices.isEmpty() ? null : allServices.split("\\s+");
   }
 
@@ -85,7 +85,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
                 throw new UncheckedIOException(e);
               }
             };
-        String message = new ExecHelper(getLog()).outputToConsumer(builder, consumer);
+        String message = new ExecHelper().outputToConsumer(getLog(), builder, consumer);
         if (message != null) {
           getLog().warn(message + " while saving logs for service " + service);
         }

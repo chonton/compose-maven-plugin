@@ -105,8 +105,8 @@ public class ComposeUp extends ComposeLogsGoal {
       try {
         long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
 
-        ExecHelper execHelper = new ExecHelper(getLog());
-        execHelper.createProcess(startBuilder, null);
+        ExecHelper execHelper = new ExecHelper();
+        execHelper.createProcess(getLog(), startBuilder, null);
 
         checkHealth(deadLine);
 
@@ -342,7 +342,7 @@ public class ComposeUp extends ComposeLogsGoal {
   private void assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
-    String port = new ExecHelper(this.getLog()).outputAsString(builder).strip();
+    String port = new ExecHelper().outputAsString(getLog(), builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     userProperties.put(portInfo.getProperty(), port);
