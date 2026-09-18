@@ -1,6 +1,8 @@
 package org.honton.chas.compose.maven.plugin;
 
 import com.sun.security.auth.module.UnixSystem;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
@@ -17,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -31,6 +34,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.interpolation.AbstractValueSource;
 import org.codehaus.plexus.interpolation.InterpolationException;
 import org.codehaus.plexus.interpolation.Interpolator;
 
@@ -39,6 +43,8 @@ import org.codehaus.plexus.interpolation.Interpolator;
 public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
+  private final MavenSession mavenSession;
+  private final MavenProject mavenProject;
 
   /** If true, health checks are skipped. */
   @Parameter(property = "compose.skipHealth", defaultValue = "false")
@@ -55,20 +61,40 @@ public class ComposeUp extends ComposeLogsGoal {
   @Parameter Map<String, String> env = new HashMap<>();
 
   /**
-   * Map&lt;String,String> of user property aliases. After maven user properties are assigned with
-   * host port values, each alias is interpolated and is assigned.
+   * Map&lt;String,String> of port property interpolations. After port properties are assigned with
+   * host port values, each entry is interpolated and added to portPropertiesFile
    */
-  @Parameter Map<String, String> alias;
+  @Parameter Map<String, String> portProperties;
+
+  /**
+   * Map&lt;String,String> of project properties to export. After port properties are assigned with
+   * host port values, each entry is interpolated and added to Maven project properties
+   */
+  @Parameter Map<String, String> projectProperties;
 
   /** Number of seconds to wait for pulling images */
   @Parameter(property = "compose.pullTimeout", defaultValue = "180")
   int pullTimeout;
 
+  /**
+   * Add port assignments to specified properties file. File name is resolved relative to
+   * target/compose. Set failsafe.systemPropertiesFile to same location.
+   */
+  @Parameter(
+      property = "compose.portPropertiesFile",
+      defaultValue = "ports.properties",
+      required = true)
+  String portPropertiesFile;
+
+  Path portPropertiesPath;
+  Properties workingSet;
   private Path healthLogPath;
 
   @Inject
-  public ComposeUp(MavenSession session, MavenProject project) {
-    interpolator = InterpolatorFactory.createInterpolator(session, project);
+  public ComposeUp(MavenSession mavenSession, MavenProject mavenProject) {
+    interpolator = InterpolatorFactory.createInterpolator(mavenSession, mavenProject);
+    this.mavenSession = mavenSession;
+    this.mavenProject = mavenProject;
   }
 
   @Override
@@ -77,6 +103,8 @@ public class ComposeUp extends ComposeLogsGoal {
       getLog().info("No linked compose file, `compose up` not executed");
       return;
     }
+
+    loadPortProperties();
 
     createHostSourceDirs();
     allocatePorts();
@@ -122,13 +150,33 @@ public class ComposeUp extends ComposeLogsGoal {
 
     // if success, assign maven variables
     portInfos.forEach(this::assignMavenVariable);
-    if (alias != null) {
-      try {
-        interpolateAliases();
-      } catch (InterpolationException e) {
-        throw new MojoExecutionException(e);
+    if (portProperties != null) {
+      interpolateAliases("Port property ", portProperties, workingSet);
+    }
+    if (projectProperties != null) {
+      interpolateAliases("Project property ", projectProperties, mavenProject.getProperties());
+    }
+    try (BufferedWriter writer = Files.newBufferedWriter(portPropertiesPath)) {
+      workingSet.store(writer, "updated by compose-maven-plugin");
+    }
+  }
+
+  private void loadPortProperties() throws IOException {
+    portPropertiesPath = composeProject.resolve(portPropertiesFile);
+    workingSet = new Properties();
+    if (Files.exists(portPropertiesPath)) {
+      try (BufferedReader reader = Files.newBufferedReader(portPropertiesPath)) {
+        workingSet.load(reader);
       }
     }
+
+    interpolator.addValueSource(
+        new AbstractValueSource(false) {
+          @Override
+          public Object getValue(String expression) {
+            return workingSet.get(expression);
+          }
+        });
   }
 
   private Map<String, String> getUnixEnv() {
@@ -144,6 +192,7 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void allocatePorts() throws IOException {
+    Properties userProperties = mavenSession.getUserProperties();
     for (PortInfo portInfo : portInfos) {
       String envVar = portInfo.getEnv();
       if (envVar != null) {
@@ -154,8 +203,8 @@ public class ComposeUp extends ComposeLogsGoal {
             value = Integer.toString(serverSocket.getLocalPort());
             getLog().info("Allocated port: " + value + " for environment variable: " + envVar);
           }
-          userProperties.setProperty(key, value);
         }
+        workingSet.setProperty(key, value);
         env.put(envVar, value);
       }
     }
@@ -345,19 +394,23 @@ public class ComposeUp extends ComposeLogsGoal {
     String port = new ExecHelper().outputAsString(getLog(), builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
-    userProperties.put(portInfo.getProperty(), port);
+    workingSet.setProperty(portInfo.getProperty(), port);
   }
 
-  private void interpolateAliases() throws InterpolationException {
+  private void interpolateAliases(String category, Map<String, String> alias, Properties consumer) {
     for (Map.Entry<String, String> aliasEntry : alias.entrySet()) {
       String name = aliasEntry.getKey();
-      String target = interpolator.interpolate(aliasEntry.getValue());
-      String value = userProperties.getProperty(target);
-      if (value != null) {
-        getLog().info("Alias " + name + " to " + target + " (" + value + ")");
-        userProperties.put(name, value);
-      } else {
-        getLog().warn("Alias " + name + '(' + target + ") does not have value");
+      try {
+        String target = interpolator.interpolate(aliasEntry.getValue());
+        String value = workingSet.getProperty(target);
+        if (value != null) {
+          getLog().info("Setting " + category + target + " to " + value);
+          consumer.setProperty(name, value);
+        } else {
+          getLog().warn(category + ' ' + name + " does not have value, " + target + "not set");
+        }
+      } catch (InterpolationException ignored) {
+        getLog().info("Ignored interpolation exception for " + category + ' ' + name);
       }
     }
   }
