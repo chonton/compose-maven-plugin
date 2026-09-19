@@ -9,13 +9,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.honton.chas.compose.maven.plugin.ExecHelper.Sink;
 import org.honton.chas.compose.maven.plugin.yaml.ComposeConstructor;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class ComposeLogsGoal extends ComposeProjectGoal {
+
+  protected List<PortInfo> portInfos;
 
   /** Directory for container logs */
   @Parameter(
@@ -24,11 +25,7 @@ public abstract class ComposeLogsGoal extends ComposeProjectGoal {
       required = true)
   String logs;
 
-  @Parameter(defaultValue = "${session.userProperties}", required = true, readonly = true)
-  Properties userProperties;
-
   private Yaml yaml;
-  protected List<PortInfo> portInfos;
 
   protected boolean readCompose() throws IOException {
     if (!Files.isReadable(composeFile)) {

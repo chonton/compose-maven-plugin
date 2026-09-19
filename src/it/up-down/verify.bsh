@@ -7,9 +7,12 @@ import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
 String content = Files.readString(basedir.toPath().resolve("build.log"), StandardCharsets.UTF_8);
-Pattern pattern = Pattern.compile("^\\[INFO] http.port = ([1-9]\\d+)\nhttps.port = ([1-9]\\d+)", Pattern.MULTILINE);
-if (!pattern.matcher(content).find()) {
-  throw new IllegalStateException("ports not set");
+
+if (!content.contains("[INFO] Setting https.port to")) {
+  throw new IllegalStateException("https.port not set");
+}
+if (!content.contains("[INFO] Setting http.port to")) {
+  throw new IllegalStateException("http.port not set");
 }
 
 Path composeDir = basedir.toPath().resolve("target/compose-logs");

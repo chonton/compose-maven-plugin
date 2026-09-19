@@ -18,8 +18,6 @@ public class ComposeDown extends ComposeLogsGoal {
       return;
     }
 
-    removeUserProperties();
-
     CommandBuilder builder = createBuilder("stop");
     // stop all services in linked compose file
     readServices().forEach(builder::addOption);
@@ -33,18 +31,6 @@ public class ComposeDown extends ComposeLogsGoal {
     // compose down will remove containers and networks
     builder = createBuilder("down").addOption("--remove-orphans").addOption("--volumes");
     executeComposeCommand(builder, timeout);
-  }
-
-  // undoes the effects of ComposeUp.allocatePorts. if we have (composite) project with multiple
-  // composeUp / composeDown goals, we need to remove the ports allocated by the first composeUp
-  // goal so that second composeUp goal can allocate ports
-  private void removeUserProperties() {
-    for (PortInfo portInfo : portInfos) {
-      String envVar = portInfo.getEnv();
-      if (envVar != null) {
-        userProperties.remove(portInfo.getProperty());
-      }
-    }
   }
 
   private Set<String> readServices() throws IOException {

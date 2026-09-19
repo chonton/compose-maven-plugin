@@ -95,15 +95,15 @@ set to **target/compose**. The linked application file is saved as **target/comp
 
 ### Link Configuration
 
-|    Parameter | Default               | Property        | Description                                      |
-|-------------:|:----------------------|:----------------|:-------------------------------------------------|
-|       attach | true                  | compose.attach  | Attach compose file as build artifact            |
-|          cli | `docker-compose`      | compose.cli     | Name of compose cli                              |
-| dependencies |                       |                 | Dependency coordinates                           |
-|       filter | true                  | compose.filter  | Interpolate maven properties while linking       |
-|      project | ${project.artifactId} | compose.project | Compose project name                             |
-|         skip | false                 | compose.skip    | Skip execution                                   |
-|       source | src/main/compose      | compose.source  | Location of compose files                        |
+|    Parameter | Default               | Property        | Description                                |
+|-------------:|:----------------------|:----------------|:-------------------------------------------|
+|       attach | true                  | compose.attach  | Attach compose file as build artifact      |
+|          cli | `docker-compose`      | compose.cli     | Name of compose cli                        |
+| dependencies |                       |                 | Dependency coordinates                     |
+|       filter | true                  | compose.filter  | Interpolate maven properties while linking |
+|      project | ${project.artifactId} | compose.project | Compose project name                       |
+|         skip | false                 | compose.skip    | Skip execution                             |
+|       source | src/main/compose      | compose.source  | Location of compose files                  |
 
 Dependencies may be specified in two different forms: `Group:Artifact:Version` or `Group:Artifact::Classifier:Version`.
 If using the first form, the classifier defaults to `compose`. Dependencies is a list of strings, each element may
@@ -114,9 +114,9 @@ contain multiple dependencies separated by commas or whitespace.
 The [up](https://chonton.github.io/compose-maven-plugin/up-mojo.html) goal binds by default to the
 **pre-integration-test** phase. This goal executes `docker compose up` using **target/compose/compose.yaml**. If a
 `published` field of any [service port](https://docs.docker.com/compose/compose-file/05-services/#ports) is defined with
-a non-numeric name, a maven user property of that name will be set with the assigned port. If the `published` field is
+a non-numeric name, a port property of that name will be set with the assigned port. If the `published` field is
 a value of form `${property}`, then a port is allocated, and an environment variable is added to the `.env` file which
-can then be used in interpolation by compose. Only IPv4 addresses will be set in maven variables, as compose
+can then be used in interpolation by compose. Only IPv4 addresses will be set in port properties, as compose
 occasionally will confuse the host port for different container IPv4 and IPv6 ports.
 
 For unix like systems, two bonus environment variables will be set: UID, the numeric user id of the current user and
@@ -124,25 +124,27 @@ GID, the numeric group id of the current user.
 
 ### Configuration
 
-|         Parameter | Default               | Property                  | Description                              |
-|------------------:|:----------------------|:--------------------------|:-----------------------------------------|
-|             alias | true                  |                           | Map of user property aliases             |
-| allServiceHealthy | false                 | compose.allServiceHealthy | Check all service_started conditions     |
-|               cli | `docker-compose`      | compose.cli               | Name of compose cli                      |
-|               env |                       |                           | Map of compose environment variables     |
-|              logs | target/container-logs | compose.logs              | Directory for failed container logs      |
-|              skip | false                 | compose.skip              | Skip execution                           |
-|        skipHealth | false                 | compose.skipHealth        | Skip checking health during startup      |
-|       pullTimeout | 180                   | compose.pullTimeout       | Number of seconds to wait for pull       |
-|           timeout | 90                    | compose.timeout           | Number of seconds to wait for completion |
+|          Parameter | Default               | Property                   | Description                              |
+|-------------------:|:----------------------|:---------------------------|:-----------------------------------------|
+|  allServiceHealthy | false                 | compose.allServiceHealthy  | Check all service_started conditions     |
+|                cli | `docker-compose`      | compose.cli                | Name of compose cli                      |
+|                env |                       |                            | Map of compose environment variables     |
+|               logs | target/container-logs | compose.logs               | Directory for failed container logs      |
+|               skip | false                 | compose.skip               | Skip execution                           |
+|         skipHealth | false                 | compose.skipHealth         | Skip checking health during startup      |
+|        pullTimeout | 180                   | compose.pullTimeout        | Number of seconds to wait for pull       |
+|     portProperties | -                     |                            | Map of port property interpolations      |
+| portPropertiesFile | -                     | compose.portPropertiesFile | Properties file to hold port definitions |
+|  projectProperties | -                     |                            | Map of project property interpolations   |
+|            timeout | 90                    | compose.timeout            | Number of seconds to wait for completion |
 
 Once `docker-compose` command has returned, the plugin will check the health of each service, unless `skipHealth` is
 true. If any defined condition is not healthy, the plugin will fail the build. Health probes will be collected in the
 **target/compose-health** directory.
 
-Once health conditions are satisfied, the plugin will set maven user properties for each allocated port. After user
-properties for ports are set, alias user properties are evaluated. For each alias, the alias value is interpolated. The
-user property named with the alias key is set to the interpolation result.
+Once health conditions are satisfied, the plugin will set port properties for each allocated port. After port properties
+are set, portProperties and projectProperties maps are evaluated. For each map entry, the value is interpolated and
+added to respectively to the portPropertiesFile or maven project properties.
 
 If `docker-compose` fails, logs for each container will be collected in the **target/compose-logs/** directory.
 
@@ -150,17 +152,16 @@ If `docker-compose` fails, logs for each container will be collected in the **ta
 
 The [down](https://chonton.github.io/compose-maven-plugin/down-mojo.html) goal binds by default to
 the **post-integration-test** phase. This goal executes `docker compose down` using **target/compose/compose.yaml**.
-Maven user property created by the `up` goal are removed.
 Logs for each container will be collected in the **target/compose-logs/** directory.
 
 ### Configuration
 
-| Parameter | Default               | Property        | Description                                      |
-|----------:|:----------------------|:----------------|:-------------------------------------------------|
-|       cli | `docker-compose`      | compose.cli     | Name of compose cli                              |
-|      logs | target/container-logs | compose.logs    | Directory for container logs                     |
-|      skip | false                 | compose.skip    | Skip execution                                   |
-|   timeout | 90                    | compose.timeout | Number of seconds to wait for compose completion |
+|          Parameter | Default               | Property                   | Description                              |
+|-------------------:|:----------------------|:---------------------------|:-----------------------------------------|
+|                cli | `docker-compose`      | compose.cli                | Name of compose cli                      |
+|               logs | target/container-logs | compose.logs               | Directory for container logs             |
+|               skip | false                 | compose.skip               | Skip execution                           |
+|            timeout | 90                    | compose.timeout            | Seconds to wait for compose completion   |
 
 ### Container logs
 
@@ -179,7 +180,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.32</version>
+        <version>0.0.33</version>
       </plugin>
     </plugins>
   </pluginManagement>
@@ -221,15 +222,15 @@ services:
       mode: host
 ```
 
-### Alias Example
+### PortProperties Example
 
 With the following configuration for the `up` goal, used with the above compose and with maven property `docker.service`
-set to `my-app`, results in the maven user property `https.port` set to the value of host port mapped to container
+set to `my-app`, results in the port property `https.port` set to the value of host port mapped to container
 `my-app` port 443.
 
 ```xml
 
-<alias>
+<portProperties>
   <https.port>${docker.service}.https.port</https.port>
-</alias>
+</portProperties>
 ```
