@@ -26,6 +26,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.settings.Settings;
 import org.codehaus.plexus.interpolation.Interpolator;
 import org.codehaus.plexus.interpolation.InterpolatorFilterReader;
 import org.eclipse.aether.RepositoryException;
@@ -82,8 +83,8 @@ public class ComposeLink extends ComposeProjectGoal {
   private ArtifactHelper artifactHelper;
 
   @Inject
-  public ComposeLink(MavenSession session, MavenProject project) {
-    interpolator = InterpolatorFactory.createInterpolator(session, project);
+  public ComposeLink(MavenSession session, MavenProject project, Settings settings) {
+    interpolator = InterpolatorFactory.createInterpolator(project, session, settings);
 
     DumperOptions yamlOptions = new DumperOptions();
     yamlOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);

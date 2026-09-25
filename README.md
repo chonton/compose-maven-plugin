@@ -124,19 +124,19 @@ GID, the numeric group id of the current user.
 
 ### Configuration
 
-|          Parameter | Default               | Property                   | Description                              |
-|-------------------:|:----------------------|:---------------------------|:-----------------------------------------|
-|  allServiceHealthy | false                 | compose.allServiceHealthy  | Check all service_started conditions     |
-|                cli | `docker-compose`      | compose.cli                | Name of compose cli                      |
-|                env |                       |                            | Map of compose environment variables     |
-|               logs | target/container-logs | compose.logs               | Directory for failed container logs      |
-|               skip | false                 | compose.skip               | Skip execution                           |
-|         skipHealth | false                 | compose.skipHealth         | Skip checking health during startup      |
-|        pullTimeout | 180                   | compose.pullTimeout        | Number of seconds to wait for pull       |
-|     portProperties | -                     |                            | Map of port property interpolations      |
-| portPropertiesFile | -                     | compose.portPropertiesFile | Properties file to hold port definitions |
-|  projectProperties | -                     |                            | Map of project property interpolations   |
-|            timeout | 90                    | compose.timeout            | Number of seconds to wait for completion |
+|          Parameter | Default               | Property                   | Description                                                          |
+|-------------------:|:----------------------|:---------------------------|:---------------------------------------------------------------------|
+|  allServiceHealthy | false                 | compose.allServiceHealthy  | Check all service_started conditions                                 |
+|                cli | `docker-compose`      | compose.cli                | Name of compose cli                                                  |
+|                env |                       |                            | Map of compose environment variables                                 |
+|               logs | target/container-logs | compose.logs               | Directory for failed container logs                                  |
+|               skip | false                 | compose.skip               | Skip execution                                                       |
+|         skipHealth | false                 | compose.skipHealth         | Skip checking health during startup                                  |
+|        pullTimeout | 180                   | compose.pullTimeout        | Number of seconds to wait for pull                                   |
+|     portProperties | -                     |                            | Map of expressions to interpolation and export to portPropertiesFile |
+| portPropertiesFile | -                     | compose.portPropertiesFile | Properties file to hold port definitions                             |
+|  projectProperties | -                     |                            | Map of expressions to interpolate and export to project properties   |
+|            timeout | 90                    | compose.timeout            | Number of seconds to wait for completion                             |
 
 Once `docker-compose` command has returned, the plugin will check the health of each service, unless `skipHealth` is
 true. If any defined condition is not healthy, the plugin will fail the build. Health probes will be collected in the
@@ -180,7 +180,7 @@ directory.
       <plugin>
         <groupId>org.honton.chas</groupId>
         <artifactId>compose-maven-plugin</artifactId>
-        <version>0.0.33</version>
+        <version>0.0.34</version>
       </plugin>
     </plugins>
   </pluginManagement>

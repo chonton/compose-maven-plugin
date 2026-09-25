@@ -34,7 +34,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
-import org.codehaus.plexus.interpolation.AbstractValueSource;
+import org.apache.maven.settings.Settings;
 import org.codehaus.plexus.interpolation.InterpolationException;
 import org.codehaus.plexus.interpolation.Interpolator;
 
@@ -43,7 +43,6 @@ import org.codehaus.plexus.interpolation.Interpolator;
 public class ComposeUp extends ComposeLogsGoal {
 
   private final Interpolator interpolator;
-  private final MavenSession mavenSession;
   private final MavenProject mavenProject;
 
   /** If true, health checks are skipped. */
@@ -91,9 +90,10 @@ public class ComposeUp extends ComposeLogsGoal {
   private Path healthLogPath;
 
   @Inject
-  public ComposeUp(MavenSession mavenSession, MavenProject mavenProject) {
-    interpolator = InterpolatorFactory.createInterpolator(mavenSession, mavenProject);
-    this.mavenSession = mavenSession;
+  public ComposeUp(MavenSession mavenSession, MavenProject mavenProject, Settings settings) {
+    workingSet = new Properties();
+    interpolator =
+        InterpolatorFactory.createInterpolator(mavenProject, mavenSession, settings, workingSet);
     this.mavenProject = mavenProject;
   }
 
@@ -163,20 +163,11 @@ public class ComposeUp extends ComposeLogsGoal {
 
   private void loadPortProperties() throws IOException {
     portPropertiesPath = composeProject.resolve(portPropertiesFile);
-    workingSet = new Properties();
     if (Files.exists(portPropertiesPath)) {
       try (BufferedReader reader = Files.newBufferedReader(portPropertiesPath)) {
         workingSet.load(reader);
       }
     }
-
-    interpolator.addValueSource(
-        new AbstractValueSource(false) {
-          @Override
-          public Object getValue(String expression) {
-            return workingSet.get(expression);
-          }
-        });
   }
 
   private Map<String, String> getUnixEnv() {
@@ -192,20 +183,23 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void allocatePorts() throws IOException {
-    Properties userProperties = mavenSession.getUserProperties();
     for (PortInfo portInfo : portInfos) {
       String envVar = portInfo.getEnv();
       if (envVar != null) {
         String key = portInfo.getProperty();
-        String value = userProperties.getProperty(key);
-        if (value == null) {
-          try (ServerSocket serverSocket = new ServerSocket(0)) {
-            value = Integer.toString(serverSocket.getLocalPort());
-            getLog().info("Allocated port: " + value + " for environment variable: " + envVar);
+        try {
+          String value = interpolator.interpolate(key);
+          if (value == null || value.equals(key)) {
+            try (ServerSocket serverSocket = new ServerSocket(0)) {
+              value = Integer.toString(serverSocket.getLocalPort());
+              getLog().info("Allocated port: " + value + " for environment variable: " + envVar);
+            }
           }
+          workingSet.setProperty(key, value);
+          env.put(envVar, value);
+        } catch (InterpolationException ignored) {
+          getLog().info("Ignored interpolation exception for port " + key);
         }
-        workingSet.setProperty(key, value);
-        env.put(envVar, value);
       }
     }
   }
