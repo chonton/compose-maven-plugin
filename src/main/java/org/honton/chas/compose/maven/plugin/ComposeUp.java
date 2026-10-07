@@ -151,10 +151,10 @@ public class ComposeUp extends ComposeLogsGoal {
     // if success, assign maven variables
     portInfos.forEach(this::assignMavenVariable);
     if (portProperties != null) {
-      interpolateAliases("Port property ", portProperties, workingSet);
+      interpolateAliases("port", portProperties, workingSet);
     }
     if (projectProperties != null) {
-      interpolateAliases("Project property ", projectProperties, mavenProject.getProperties());
+      interpolateAliases("project", projectProperties, mavenProject.getProperties());
     }
     try (BufferedWriter writer = Files.newBufferedWriter(portPropertiesPath)) {
       workingSet.store(writer, "updated by compose-maven-plugin");
@@ -392,6 +392,7 @@ public class ComposeUp extends ComposeLogsGoal {
   }
 
   private void interpolateAliases(String category, Map<String, String> alias, Properties consumer) {
+    category += " property ";
     for (Map.Entry<String, String> aliasEntry : alias.entrySet()) {
       String name = aliasEntry.getKey();
       try {
@@ -401,10 +402,10 @@ public class ComposeUp extends ComposeLogsGoal {
           getLog().info("Setting " + category + target + " to " + value);
           consumer.setProperty(name, value);
         } else {
-          getLog().warn(category + ' ' + name + " does not have value, " + target + "not set");
+          getLog().warn(category + name + " does not have value, " + target + " not set");
         }
       } catch (InterpolationException ignored) {
-        getLog().info("Ignored interpolation exception for " + category + ' ' + name);
+        getLog().info("Ignored interpolation exception for " + category + name);
       }
     }
   }
