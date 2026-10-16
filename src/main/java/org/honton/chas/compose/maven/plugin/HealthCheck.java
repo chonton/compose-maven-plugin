@@ -68,8 +68,8 @@ public class HealthCheck {
         .setTest(parseTest(map.get("test")))
         .setInterval(duration(map, "interval", DEFAULT_DURATION))
         .setTimeout(duration(map, "timeout", DEFAULT_DURATION))
-        .setStartPeriod(duration(map, "start-period", 0L))
-        .setStartInterval(duration(map, "start-interval", DEFAULT_INTERVAL))
+        .setStartPeriod(duration(map, "start_period", 0L))
+        .setStartInterval(duration(map, "start_interval", DEFAULT_INTERVAL))
         .setRetries(integer(map, "retries", DEFAULT_RETRIES));
   }
 
