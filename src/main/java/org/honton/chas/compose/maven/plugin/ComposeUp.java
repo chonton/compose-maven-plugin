@@ -118,34 +118,28 @@ public class ComposeUp extends ComposeLogsGoal {
     }
     executeComposeCommand(pullBuilder, pullTimeout);
 
-    // watch events
-    Process watcher = startEventWatcher(createBuilder("events").addOption("--json"));
+    // start containers
+    final CommandBuilder startBuilder =
+        createBuilder("up")
+            .addOption("--detach")
+            .addOption("--renew-anon-volumes")
+            .addOption("--remove-orphans");
+    if (hasEnv) {
+      startBuilder.addGlobalOption("--env-file", DOT_ENV);
+    }
     try {
-      // start containers
-      final CommandBuilder startBuilder =
-          createBuilder("up")
-              .addOption("--detach")
-              .addOption("--renew-anon-volumes")
-              .addOption("--remove-orphans");
-      if (hasEnv) {
-        startBuilder.addGlobalOption("--env-file", DOT_ENV);
-      }
-      try {
-        long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+      long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
 
-        ExecHelper execHelper = new ExecHelper();
-        execHelper.createProcess(getLog(), startBuilder, null);
+      ExecHelper execHelper = new ExecHelper();
+      execHelper.createProcess(getLog(), startBuilder, null);
 
-        checkHealth(deadLine);
+      checkHealth(deadLine);
 
-        execHelper.waitForExit(deadLine);
-      } catch (MojoExecutionException e) {
-        // if compose up failed, save logs
-        saveServiceLogs();
-        throw e;
-      }
-    } finally {
-      watcher.destroy();
+      execHelper.waitForExit(deadLine);
+    } catch (MojoExecutionException e) {
+      // if compose up failed, save logs
+      saveServiceLogs();
+      throw e;
     }
 
     // if success, assign maven variables
@@ -363,12 +357,6 @@ public class ComposeUp extends ComposeLogsGoal {
         StandardOpenOption.APPEND);
 
     return createProcess(command, trace);
-  }
-
-  private Process startEventWatcher(CommandBuilder builder) throws IOException {
-    Path logPath = createLogDir();
-    Path logFile = logPath.resolve("compose-events.log");
-    return createProcess(builder.getCommand(), logFile);
   }
 
   private Process createProcess(List<String> command, Path output) throws IOException {
