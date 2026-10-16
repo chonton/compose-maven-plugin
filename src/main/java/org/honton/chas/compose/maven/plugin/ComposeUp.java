@@ -97,6 +97,15 @@ public class ComposeUp extends ComposeLogsGoal {
     this.mavenProject = mavenProject;
   }
 
+  private static boolean isPort(String portStr) {
+    try {
+      int port = Integer.parseInt(portStr);
+      return port > 1024;
+    } catch (NumberFormatException e) {
+      return false;
+    }
+  }
+
   @Override
   void doCommands() throws IOException, MojoExecutionException {
     if (!readCompose()) {
@@ -127,9 +136,9 @@ public class ComposeUp extends ComposeLogsGoal {
     if (hasEnv) {
       startBuilder.addGlobalOption("--env-file", DOT_ENV);
     }
-    try {
-      long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
 
+    long deadLine = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeout);
+    try {
       ExecHelper execHelper = new ExecHelper();
       execHelper.createProcess(getLog(), startBuilder, null);
 
@@ -143,7 +152,8 @@ public class ComposeUp extends ComposeLogsGoal {
     }
 
     // if success, assign maven variables
-    portInfos.forEach(this::assignMavenVariable);
+    assignMavenVariables(deadLine, new ArrayList<>(portInfos));
+
     if (portProperties != null) {
       interpolateAliases("port", portProperties, workingSet);
     }
@@ -371,13 +381,29 @@ public class ComposeUp extends ComposeLogsGoal {
     return process;
   }
 
-  private void assignMavenVariable(PortInfo portInfo) {
+  private void assignMavenVariables(long deadLine, List<PortInfo> portInfos)
+      throws MojoExecutionException {
+    while (!portInfos.isEmpty()) {
+      portInfos.removeIf(this::assignMavenVariable);
+      if (System.currentTimeMillis() > deadLine) {
+        throw new MojoExecutionException("time out waiting for port assignment");
+      }
+      try {
+        Thread.sleep(5_000);
+      } catch (InterruptedException e) {
+        throw new MojoExecutionException("interrupted waiting for port assignment", e);
+      }
+    }
+  }
+
+  private boolean assignMavenVariable(PortInfo portInfo) {
     CommandBuilder builder = createBuilder("port");
     builder.addOption(portInfo.getService(), portInfo.getContainer());
     String port = new ExecHelper().outputAsString(getLog(), builder).strip();
     port = port.substring(port.lastIndexOf(':') + 1);
     getLog().info("Setting " + portInfo.getProperty() + " to " + port);
     workingSet.setProperty(portInfo.getProperty(), port);
+    return isPort(port);
   }
 
   private void interpolateAliases(String category, Map<String, String> alias, Properties consumer) {
