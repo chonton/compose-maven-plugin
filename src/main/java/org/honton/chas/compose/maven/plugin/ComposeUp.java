@@ -295,7 +295,7 @@ public class ComposeUp extends ComposeLogsGoal {
     } catch (InterruptedException ie) {
       Thread.currentThread().interrupt();
     } catch (ExecutionException ee) {
-      getLog().warn(ee.getCause());
+      throw new MojoExecutionException(ee.getCause());
     } finally {
       executor.shutdown();
     }
